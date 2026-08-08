@@ -41,13 +41,13 @@ void FramePacketTest::copySharesPixelBuffer()
 
     const FramePacket copy = original;
 
-    // Value semantics for metadata...
+    // 元数据遵循值语义……
     QCOMPARE(copy.frameId, 42);
     QCOMPARE(copy.sourceId, std::string("camera:0"));
     QVERIFY(copy.captureTimestamp == original.captureTimestamp);
 
-    // ...but the pixel buffer is intentionally shared (documented contract):
-    // same data pointer, and a write through one packet is visible via the other.
+    // ……但像素缓冲按契约共享：数据指针相同，
+    // 且通过一个副本写入能被另一个副本观察到。
     QCOMPARE(copy.image.data, original.image.data);
     original.image.at<cv::Vec3b>(0, 0) = cv::Vec3b(7, 8, 9);
     QCOMPARE(copy.image.at<cv::Vec3b>(0, 0), cv::Vec3b(7, 8, 9));
@@ -68,7 +68,7 @@ void FramePacketTest::moveTransfersPixels()
 
 void FramePacketTest::motionClassIdIsReserved()
 {
-    // Motion regions must not collide with real class indices.
+    // 运动区域的类别 id 不得与真实类别索引冲突。
     QVERIFY(visionlab::kMotionClassId < 0);
     QVERIFY(DetectionMode::Motion != DetectionMode::Object);
 }

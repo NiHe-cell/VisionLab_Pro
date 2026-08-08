@@ -9,29 +9,27 @@
 
 namespace visionlab {
 
-// A single captured frame travelling through the pipeline.
+// 在管线中流转的一帧图像。
 //
-// cv::Mat ownership semantics:
-//   `image` is held BY VALUE. cv::Mat is a reference-counted handle, so
-//   copying a FramePacket is cheap and shares the pixel buffer with the
-//   original. FramePackets are therefore passed between pipeline stages
-//   either as const references or moved by value.
+// cv::Mat 所有权语义：
+//   image 按值持有。cv::Mat 是引用计数句柄，拷贝 FramePacket 开销很小，
+//   拷贝体与原件共享同一块像素缓冲。因此管线各阶段之间只以 const 引用
+//   或移动（按值）方式传递 FramePacket。
 //
-//   Because copies alias the same buffer, consumers must treat `image` as
-//   read-only. Any stage that needs to annotate pixels (e.g. overlay
-//   rendering) must clone() before writing.
+//   由于拷贝体会别名同一缓冲，消费方必须将 image 视为只读；
+//   任何需要在像素上标注的阶段（如叠加渲染）必须先 clone() 再写。
 struct FramePacket
 {
-    // Monotonically increasing id assigned by the capture stage.
+    // 由采集阶段分配的单调递增帧 id。
     std::int64_t frameId = 0;
 
-    // Timestamp taken immediately after the frame was read from the source.
+    // 从视频源读出该帧后立即记录的时间戳。
     std::chrono::steady_clock::time_point captureTimestamp{};
 
-    // Identity of the originating video source (e.g. "camera:0").
+    // 来源视频源标识（如 "camera:0"）。
     std::string sourceId;
 
-    // Pixel data; reference-counted, see ownership note above.
+    // 像素数据；引用计数共享，见上方所有权说明。
     cv::Mat image;
 };
 

@@ -5,9 +5,9 @@ project(VisionLab VERSION 0.1 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# OpenCV discovery: provide the directory containing OpenCVConfig.cmake via
-#   -DOpenCV_DIR=...            (preferred, cached)
-#   OpenCV_DIR environment var, or a CMAKE_PREFIX_PATH entry.
+# OpenCV 查找：通过以下任一方式提供 OpenCVConfig.cmake 所在目录：
+#   -DOpenCV_DIR=...            （推荐，会被缓存）
+#   OpenCV_DIR 环境变量，或 CMAKE_PREFIX_PATH 条目。
 set(OpenCV_DIR "" CACHE PATH
     "Directory containing OpenCVConfig.cmake (e.g. <opencv>/build/x64/vc16/lib)")
 
@@ -37,8 +37,8 @@ find_package(Qt6 REQUIRED COMPONENTS
 
 qt_standard_project_setup(REQUIRES 6.8)
 
-# Pure C++ domain layer: no Qt, no QML. Header-only static library; the
-# absence of Qt linkage is what enforces the core/QML separation rule.
+# 纯 C++ 领域层：不依赖 Qt / QML。纯头文件静态库；
+# core 不链接 Qt 这一事实本身就是 core/QML 隔离规则的构建期保证。
 add_library(visionlab_core STATIC
     core/VisionTypes.h
     core/FramePacket.h

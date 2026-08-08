@@ -7,21 +7,20 @@
 
 namespace visionlab {
 
-// A single structured detector output, in original frame pixel coordinates.
-// Pure domain type: no Qt, no rendering concerns.
+// 单条结构化检测结果，坐标为原始帧像素坐标。
+// 纯领域类型：不依赖 Qt，不涉及渲染。
 struct Detection
 {
-    // Index into the detector's class table; kMotionClassId for motion
-    // regions, which carry no class semantics.
+    // 检测器类别表中的索引；运动区域使用 kMotionClassId，无类别语义。
     int classId = -1;
 
-    // Human-readable class label (e.g. "person", "face", "motion").
+    // 可读的类别标签（如 "person"、"face"、"motion"）。
     std::string label;
 
-    // Confidence in [0, 1] where the detector provides one.
+    // 置信度，取值 [0, 1]（检测器能提供时）。
     float confidence = 0.0F;
 
-    // Bounding box in original frame pixel coordinates.
+    // 包围框，原始帧像素坐标。
     cv::Rect box;
 };
 

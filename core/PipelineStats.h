@@ -6,12 +6,11 @@
 
 namespace visionlab {
 
-// Aggregated pipeline counters and timing values.
+// 管线计数与耗时指标的聚合。
 //
-// Phase 1 defines the data shape only; the capture/inference workers that
-// populate these fields arrive with the Phase 2 pipeline. Values will be
-// written by worker threads and sampled by the UI, so population code must
-// use atomics or a snapshot hand-off (decided in Phase 2).
+// Phase 1 只定义数据形状；真正写入这些字段的采集/推理工作线程将在
+// Phase 2 引入。由于字段将由工作线程写入、UI 线程采样，届时写入方
+// 必须使用原子或快照交接（具体方案在 Phase 2 决定）。
 struct PipelineStats
 {
     std::uint64_t capturedFrames = 0;
