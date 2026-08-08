@@ -37,6 +37,18 @@ find_package(Qt6 REQUIRED COMPONENTS
 
 qt_standard_project_setup(REQUIRES 6.8)
 
+# Pure C++ domain layer: no Qt, no QML. Header-only static library; the
+# absence of Qt linkage is what enforces the core/QML separation rule.
+add_library(visionlab_core STATIC
+    core/VisionTypes.h
+    core/FramePacket.h
+    core/Detection.h
+    core/PipelineStats.h
+)
+target_include_directories(visionlab_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(visionlab_core PUBLIC ${OpenCV_LIBS})
+set_target_properties(visionlab_core PROPERTIES LINKER_LANGUAGE CXX)
+
 qt_add_executable(appVisionLab
     main.cpp
     app.rc
@@ -72,6 +84,7 @@ qt_add_qml_module(appVisionLab
 )
 
 target_link_libraries(appVisionLab PRIVATE
+    visionlab_core
     Qt6::Core
     Qt6::Widgets
     Qt6::Quick
