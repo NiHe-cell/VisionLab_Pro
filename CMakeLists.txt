@@ -5,6 +5,11 @@ project(VisionLab VERSION 0.1 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# 源码统一按 UTF-8 解析（仓库内的简体中文注释依赖此开关）。
+if(MSVC)
+    add_compile_options(/utf-8)
+endif()
+
 # OpenCV 查找：通过以下任一方式提供 OpenCVConfig.cmake 所在目录：
 #   -DOpenCV_DIR=...            （推荐，会被缓存）
 #   OpenCV_DIR 环境变量，或 CMAKE_PREFIX_PATH 条目。
@@ -50,6 +55,13 @@ target_include_directories(visionlab_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(visionlab_core PUBLIC ${OpenCV_LIBS})
 set_target_properties(visionlab_core PROPERTIES LINKER_LANGUAGE CXX)
 
+# 渲染层：Detection 标注的唯一写入方。不依赖 Qt / QML。
+add_library(visionlab_rendering STATIC
+    rendering/DetectionRenderer.h
+    rendering/DetectionRenderer.cpp
+)
+target_link_libraries(visionlab_rendering PUBLIC visionlab_core)
+
 qt_add_executable(appVisionLab
     main.cpp
     app.rc
@@ -86,6 +98,7 @@ qt_add_qml_module(appVisionLab
 
 target_link_libraries(appVisionLab PRIVATE
     visionlab_core
+    visionlab_rendering
     Qt6::Core
     Qt6::Widgets
     Qt6::Quick
