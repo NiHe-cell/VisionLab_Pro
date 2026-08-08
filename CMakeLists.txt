@@ -2,12 +2,30 @@ cmake_minimum_required(VERSION 3.16)
 
 project(VisionLab VERSION 0.1 LANGUAGES CXX)
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# OpenCV
-set(OpenCV_DIR "C:/opencv/build/x64/vc16/lib")
-find_package(OpenCV REQUIRED)
+# OpenCV discovery: provide the directory containing OpenCVConfig.cmake via
+#   -DOpenCV_DIR=...            (preferred, cached)
+#   OpenCV_DIR environment var, or a CMAKE_PREFIX_PATH entry.
+set(OpenCV_DIR "" CACHE PATH
+    "Directory containing OpenCVConfig.cmake (e.g. <opencv>/build/x64/vc16/lib)")
+
+if(WIN32 AND NOT MSVC)
+    message(FATAL_ERROR
+        "The prebuilt OpenCV for Windows (build/x64/vc16) is an MSVC build and "
+        "cannot be linked from MinGW. Use an MSVC kit (e.g. Desktop Qt 6.x "
+        "MSVC2022 64bit), or point OpenCV_DIR to a MinGW-built OpenCV and "
+        "remove this guard.")
+endif()
+
+find_package(OpenCV QUIET)
+if(NOT OpenCV_FOUND)
+    message(FATAL_ERROR
+        "OpenCV was not found.\n"
+        "Pass the directory containing OpenCVConfig.cmake, e.g.:\n"
+        "  cmake -B build -DOpenCV_DIR=<opencv>/build/x64/vc16/lib")
+endif()
 
 # Qt
 find_package(Qt6 REQUIRED COMPONENTS
@@ -53,8 +71,6 @@ qt_add_qml_module(appVisionLab
         models/deploy.prototxt
 )
 
-target_include_directories(appVisionLab PRIVATE ${OpenCV_INCLUDE_DIRS})
-
 target_link_libraries(appVisionLab PRIVATE
     Qt6::Core
     Qt6::Widgets
@@ -66,3 +82,8 @@ target_link_libraries(appVisionLab PRIVATE
 set_target_properties(appVisionLab PROPERTIES
     WIN32_EXECUTABLE TRUE
 )
+
+include(CTest)
+if(BUILD_TESTING)
+    add_subdirectory(tests)
+endif()
