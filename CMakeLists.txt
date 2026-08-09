@@ -66,8 +66,12 @@ target_link_libraries(visionlab_rendering PUBLIC visionlab_core)
 add_library(visionlab_detectors STATIC
     detectors/YoloDecoding.h
     detectors/YoloDecoding.cpp
+    detectors/SsdDecoding.h
+    detectors/SsdDecoding.cpp
     detectors/ObjectDetector.h
     detectors/ObjectDetector.cpp
+    detectors/FaceDetector.h
+    detectors/FaceDetector.cpp
 )
 target_link_libraries(visionlab_detectors PUBLIC visionlab_core)
 
@@ -92,7 +96,6 @@ qt_add_qml_module(appVisionLab
         utilities/CameraManager.h utilities/CameraManager.cpp
         utilities/CameraImageProvider.h utilities/CameraImageProvider.cpp
         detectors/MotionDetector.h detectors/MotionDetector.cpp
-        detectors/FaceDetector.h detectors/FaceDetector.cpp
 
     RESOURCES
         assets/logo.png

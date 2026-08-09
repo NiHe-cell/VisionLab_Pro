@@ -34,7 +34,7 @@ private:
     cv::VideoCapture cap;
     bool running = false;
 
-    FaceDetector faceDetector;
+    visionlab::FaceDetector m_faceDetector;
     visionlab::ObjectDetector m_objectDetector;
     MotionDetector motionDetector;
 
