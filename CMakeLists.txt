@@ -50,6 +50,7 @@ add_library(visionlab_core STATIC
     core/Detection.h
     core/PipelineStats.h
     detectors/IDetector.h
+    video/IVideoSource.h
 )
 target_include_directories(visionlab_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(visionlab_core PUBLIC ${OpenCV_LIBS})
