@@ -75,6 +75,8 @@ add_library(visionlab_detectors STATIC
     detectors/FaceDetector.cpp
     detectors/MotionDetector.h
     detectors/MotionDetector.cpp
+    detectors/DetectorFactory.h
+    detectors/DetectorFactory.cpp
 )
 target_link_libraries(visionlab_detectors PUBLIC visionlab_core)
 
@@ -120,6 +122,7 @@ target_link_libraries(appVisionLab PRIVATE
     visionlab_core
     visionlab_rendering
     visionlab_detectors
+    visionlab_video
     Qt6::Core
     Qt6::Widgets
     Qt6::Quick

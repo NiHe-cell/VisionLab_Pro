@@ -36,13 +36,18 @@ add_executable(tst_camerasource CameraSourceTest.cpp)
 target_link_libraries(tst_camerasource PRIVATE visionlab_video Qt6::Core Qt6::Test)
 add_test(NAME camerasource COMMAND tst_camerasource)
 
+add_executable(tst_modemapping ModeMappingTest.cpp)
+target_link_libraries(tst_modemapping PRIVATE visionlab_core Qt6::Core Qt6::Test)
+add_test(NAME modemapping COMMAND tst_modemapping)
+
 if(WIN32)
     # 让测试可执行文件在 ctest 下能解析 Qt 与 OpenCV 的 DLL。
     # 预编译 OpenCV 标准目录布局：<root>/build/x64/<toolset>/{lib,bin}
     get_filename_component(VISIONLAB_OPENCV_BIN "${OpenCV_DIR}/../bin" ABSOLUTE)
     set(visionlab_tests
         smoke framepacket idetector detectionrenderer
-        yolodecoding ssddecoding motiondetector ivideosource camerasource)
+        yolodecoding ssddecoding motiondetector ivideosource
+        camerasource modemapping)
     set_tests_properties(${visionlab_tests} PROPERTIES
         ENVIRONMENT "PATH=$<TARGET_FILE_DIR:Qt6::Core>\;${VISIONLAB_OPENCV_BIN}\;$ENV{PATH}")
 endif()
