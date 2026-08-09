@@ -78,6 +78,13 @@ add_library(visionlab_detectors STATIC
 )
 target_link_libraries(visionlab_detectors PUBLIC visionlab_core)
 
+# 视频采集：IVideoSource 实现。不依赖 Qt / QML，不引入线程。
+add_library(visionlab_video STATIC
+    video/CameraSource.h
+    video/CameraSource.cpp
+)
+target_link_libraries(visionlab_video PUBLIC visionlab_core)
+
 qt_add_executable(appVisionLab
     main.cpp
     app.rc
