@@ -1,45 +1,52 @@
-/*
- * Author - Muhammed Suwaneh
-*/
-
 #include "MotionDetector.h"
-#include <QDebug>
 
-MotionDetector::MotionDetector(QObject *parent)
-    : QObject{parent}
+#include <opencv2/imgproc.hpp>
+
+#include "core/VisionTypes.h"
+
+namespace visionlab {
+
+MotionDetector::MotionDetector()
+    : m_bgSubtractor(cv::createBackgroundSubtractorMOG2(500, 16, true))
 {
-    this->bgSubtractor = cv::createBackgroundSubtractorMOG2(500, 16, true);
-    this->minArea = 500;
 }
 
-void MotionDetector::detect(cv::Mat &frame)
+std::vector<Detection> MotionDetector::detect(const FramePacket& frame)
 {
-    qDebug() << "detecting motion ...";
+    if (frame.image.empty())
+        return {};
 
-    if(frame.empty()) return;
+    // 背景减除：背景→黑，运动区域→白。
+    m_bgSubtractor->apply(frame.image, m_fgMask);
 
-    this->bgSubtractor->apply(frame, this->fgMask); // apply background subtraction - bg->black | moving area->white
+    // 去除阴影（MOG2 将阴影标为 127）并降噪。
+    cv::threshold(m_fgMask, m_fgMask, 200, 255, cv::THRESH_BINARY);
+    cv::erode(m_fgMask, m_fgMask, cv::Mat(), cv::Point(-1, -1), 1);
+    cv::dilate(m_fgMask, m_fgMask, cv::Mat(), cv::Point(-1, -1), 2);
 
-    cv::threshold(this->fgMask, this->fgMask, 200, 255, cv::THRESH_BINARY); // remove shadows
-
-    // reduce noise
-    cv::erode(this->fgMask, this->fgMask, cv::Mat(), cv::Point(-1, -1), 1);
-    cv::dilate(this->fgMask, this->fgMask, cv::Mat(), cv::Point(-1, -1), 2);
-
-    // find contours
     std::vector<std::vector<cv::Point>> contours;
-    cv::findContours(this->fgMask, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
+    cv::findContours(m_fgMask, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
 
-    for(const auto& contour: contours)
+    const cv::Rect frameRect(0, 0, frame.image.cols, frame.image.rows);
+
+    std::vector<Detection> detections;
+    for (const auto& contour : contours)
     {
-        if(cv::contourArea(contour) < this->minArea)
+        if (cv::contourArea(contour) < m_minArea)
             continue;
 
-        // draw rect on original frame
-        cv::Rect box = cv::boundingRect(contour);
-        cv::rectangle(frame, box, cv::Scalar(0, 255, 255), 2); // yellow box
+        const cv::Rect box = cv::boundingRect(contour) & frameRect;
+        if (box.empty())
+            continue;
 
-        // Label motion
-        cv::putText(frame, "In Motion", cv::Point(box.x, box.y-5), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 255, 255), 2);
+        Detection detection;
+        detection.classId = kMotionClassId;
+        detection.label = "In Motion";
+        detection.confidence = 1.0F;
+        detection.box = box;
+        detections.push_back(detection);
     }
+    return detections;
 }
+
+} // namespace visionlab

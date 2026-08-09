@@ -136,7 +136,9 @@ void CameraManager::processFrame()
                 }
             }
             else if (currentMode == "Motion Detection") {
-                motionDetector.detect(mat);
+                cv::Mat annotated = mat.clone();
+                m_renderer.render(annotated, m_motionDetector.detect(packet));
+                mat = annotated;
             }
 
             cv::cvtColor(mat, mat, cv::COLOR_BGR2RGB);

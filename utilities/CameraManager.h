@@ -36,7 +36,7 @@ private:
 
     visionlab::FaceDetector m_faceDetector;
     visionlab::ObjectDetector m_objectDetector;
-    MotionDetector motionDetector;
+    visionlab::MotionDetector m_motionDetector;
 
     // 检测标注的唯一写入方；Object 模式已改走结构化结果 + 渲染器。
     visionlab::DetectionRenderer m_renderer;

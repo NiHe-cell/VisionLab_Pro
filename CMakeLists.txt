@@ -72,6 +72,8 @@ add_library(visionlab_detectors STATIC
     detectors/ObjectDetector.cpp
     detectors/FaceDetector.h
     detectors/FaceDetector.cpp
+    detectors/MotionDetector.h
+    detectors/MotionDetector.cpp
 )
 target_link_libraries(visionlab_detectors PUBLIC visionlab_core)
 
@@ -95,7 +97,6 @@ qt_add_qml_module(appVisionLab
         controllers/VisionController.h controllers/VisionController.cpp
         utilities/CameraManager.h utilities/CameraManager.cpp
         utilities/CameraImageProvider.h utilities/CameraImageProvider.cpp
-        detectors/MotionDetector.h detectors/MotionDetector.cpp
 
     RESOURCES
         assets/logo.png
