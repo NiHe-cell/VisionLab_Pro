@@ -1,133 +1,87 @@
 #include "ObjectDetector.h"
 
-#include <QCoreApplication>
-#include <QDir>
-#include <QFile>
-#include <QTextStream>
-#include <QDebug>
+#include <filesystem>
+#include <fstream>
+#include <iostream>
 
-ObjectDetector::ObjectDetector(QObject *parent) : QObject(parent)
+#include "YoloDecoding.h"
+
+namespace visionlab {
+
+ObjectDetector::ObjectDetector(const std::string& configPath,
+                               const std::string& weightsPath,
+                               const std::string& classNamesPath)
 {
-    QDir appDir(QCoreApplication::applicationDirPath());
+    namespace fs = std::filesystem;
 
-    QString cfgPath     = appDir.filePath("VisionLab/models/yolov4-tiny.cfg");
-    QString weightsPath = appDir.filePath("VisionLab/models/yolov4-tiny.weights");
-    QString namesPath   = appDir.filePath("VisionLab/models/coco.names");
-
-    if (!QFile::exists(cfgPath) || !QFile::exists(weightsPath))
+    if (!fs::exists(configPath) || !fs::exists(weightsPath))
     {
-        qDebug() << "YOLOv4-tiny files NOT found";
+        std::cerr << "[ObjectDetector] 模型文件缺失: " << configPath
+                  << " / " << weightsPath << '\n';
         return;
     }
 
-    net = cv::dnn::readNetFromDarknet(
-        cfgPath.toStdString(),
-        weightsPath.toStdString()
-        );
-
-    if (net.empty())
+    try
     {
-        qDebug() << "Failed to load YOLOv4-tiny";
+        m_net = cv::dnn::readNetFromDarknet(configPath, weightsPath);
+    }
+    catch (const cv::Exception& e)
+    {
+        std::cerr << "[ObjectDetector] 加载 YOLOv4-tiny 失败: " << e.what() << '\n';
         return;
     }
 
-    net.setPreferableBackend(cv::dnn::DNN_BACKEND_OPENCV);
-    net.setPreferableTarget(cv::dnn::DNN_TARGET_CPU);
+    if (m_net.empty())
+    {
+        std::cerr << "[ObjectDetector] 加载 YOLOv4-tiny 失败: 网络为空\n";
+        return;
+    }
 
-    loadClassNames(namesPath);
+    m_net.setPreferableBackend(cv::dnn::DNN_BACKEND_OPENCV);
+    m_net.setPreferableTarget(cv::dnn::DNN_TARGET_CPU);
 
-    qDebug() << "YOLOv4-tiny COCO loaded successfully";
+    loadClassNames(classNamesPath);
+    m_ready = true;
 }
 
-
-void ObjectDetector::detect(cv::Mat& frame)
+std::vector<Detection> ObjectDetector::detect(const FramePacket& frame)
 {
-    qDebug() << "detecting objects ...";
+    if (!m_ready || frame.image.empty())
+        return {};
 
-    if (frame.empty())
-        return;
-
-    static int skip = 0;
-    if (++skip % 3 != 0) // skip frames for speed
-        return;
-
-    cv::Mat blob = cv::dnn::blobFromImage(
-        frame,
+    const cv::Mat blob = cv::dnn::blobFromImage(
+        frame.image,
         1.0 / 255.0,
-        cv::Size(320, 320),
+        m_inputSize,
         cv::Scalar(),
-        true,
-        false
-        );
+        /*swapRB=*/true,
+        /*crop=*/false);
 
-    net.setInput(blob);
+    m_net.setInput(blob);
 
     std::vector<cv::Mat> outputs;
-    net.forward(outputs, net.getUnconnectedOutLayersNames());
+    m_net.forward(outputs, m_net.getUnconnectedOutLayersNames());
 
-    std::vector<int> classIds;
-    std::vector<float> confidences;
-    std::vector<cv::Rect> boxes;
-
-    for (const cv::Mat& out : outputs)
-    {
-        const float* data = (float*)out.data;
-
-        for (int i = 0; i < out.rows; ++i, data += out.cols)
-        {
-            float objectness = data[4];
-            if (objectness < 0.25f)
-                continue;
-
-            cv::Mat scores(1, out.cols - 5, CV_32F, (void*)(data + 5));
-            cv::Point classId;
-            double classScore;
-            cv::minMaxLoc(scores, 0, &classScore, 0, &classId);
-
-            float conf = objectness * (float)classScore;
-            if (conf < 0.25f)
-                continue;
-
-            int cx = int(data[0] * frame.cols);
-            int cy = int(data[1] * frame.rows);
-            int w  = int(data[2] * frame.cols);
-            int h  = int(data[3] * frame.rows);
-
-            boxes.emplace_back(cx - w/2, cy - h/2, w, h);
-            confidences.push_back(conf);
-            classIds.push_back(classId.x);
-        }
-    }
-
-    std::vector<int> indices;
-    cv::dnn::NMSBoxes(boxes, confidences, 0.25f, 0.45f, indices);
-
-    for (int idx : indices)
-    {
-        cv::rectangle(frame, boxes[idx], {0,255,0}, 2);
-        cv::putText(
-            frame,
-            classNames[classIds[idx]].toStdString(),
-            {boxes[idx].x, boxes[idx].y - 5},
-            cv::FONT_HERSHEY_SIMPLEX,
-            0.5,
-            {0,255,0},
-            2
-            );
-    }
+    return yolo::decodeDetections(
+        outputs,
+        frame.image.size(),
+        m_classNames,
+        m_confidenceThreshold,
+        m_nmsThreshold);
 }
 
-
-void ObjectDetector::loadClassNames(const QString& path)
+void ObjectDetector::loadClassNames(const std::string& path)
 {
-    QFile file(path);
-    if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
+    std::ifstream file(path);
+    if (!file)
     {
-        qDebug() << "Failed to open coco.names";
+        std::cerr << "[ObjectDetector] 无法打开类别名文件: " << path << '\n';
         return;
     }
 
-    QTextStream in(&file);
-    while (!in.atEnd())
-        classNames.push_back(in.readLine());
+    std::string line;
+    while (std::getline(file, line))
+        m_classNames.push_back(line);
 }
+
+} // namespace visionlab

@@ -62,6 +62,15 @@ add_library(visionlab_rendering STATIC
 )
 target_link_libraries(visionlab_rendering PUBLIC visionlab_core)
 
+# 检测器实现：基于 IDetector 的纯 C++ 算法，不依赖 Qt / QML。
+add_library(visionlab_detectors STATIC
+    detectors/YoloDecoding.h
+    detectors/YoloDecoding.cpp
+    detectors/ObjectDetector.h
+    detectors/ObjectDetector.cpp
+)
+target_link_libraries(visionlab_detectors PUBLIC visionlab_core)
+
 qt_add_executable(appVisionLab
     main.cpp
     app.rc
@@ -82,7 +91,6 @@ qt_add_qml_module(appVisionLab
         controllers/VisionController.h controllers/VisionController.cpp
         utilities/CameraManager.h utilities/CameraManager.cpp
         utilities/CameraImageProvider.h utilities/CameraImageProvider.cpp
-        detectors/ObjectDetector.h detectors/ObjectDetector.cpp
         detectors/MotionDetector.h detectors/MotionDetector.cpp
         detectors/FaceDetector.h detectors/FaceDetector.cpp
 
@@ -99,6 +107,7 @@ qt_add_qml_module(appVisionLab
 target_link_libraries(appVisionLab PRIVATE
     visionlab_core
     visionlab_rendering
+    visionlab_detectors
     Qt6::Core
     Qt6::Widgets
     Qt6::Quick

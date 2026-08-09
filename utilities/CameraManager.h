@@ -6,6 +6,7 @@
 #include "detectors/FaceDetector.h"
 #include "detectors/ObjectDetector.h"
 #include "detectors/MotionDetector.h"
+#include "rendering/DetectionRenderer.h"
 #include <QTimer>
 #include <QImage>
 
@@ -34,8 +35,13 @@ private:
     bool running = false;
 
     FaceDetector faceDetector;
-    ObjectDetector objectDetector;
+    visionlab::ObjectDetector m_objectDetector;
     MotionDetector motionDetector;
+
+    // 检测标注的唯一写入方；Object 模式已改走结构化结果 + 渲染器。
+    visionlab::DetectionRenderer m_renderer;
+    // 捕获循环内的帧序号，用于组装 FramePacket 与保持原有跳帧节奏。
+    std::int64_t m_frameId = 0;
 
     QTimer* timer;
     QImage m_frame;

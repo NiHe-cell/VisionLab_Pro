@@ -3,10 +3,28 @@
 */
 
 #include "CameraManager.h"
+#include <QCoreApplication>
+#include <QDir>
 #include <QThread>
 #include <QDebug>
 
-CameraManager::CameraManager() : currentMode("Face Detection")
+namespace {
+
+// 模型文件随 QML 模块资源一同被复制到 <应用目录>/VisionLab/models。
+std::string modelPath(const QString& fileName)
+{
+    return QDir(QCoreApplication::applicationDirPath())
+        .filePath(QStringLiteral("VisionLab/models/") + fileName)
+        .toStdString();
+}
+
+} // namespace
+
+CameraManager::CameraManager()
+    : currentMode("Face Detection"),
+      m_objectDetector(modelPath(QStringLiteral("yolov4-tiny.cfg")),
+                       modelPath(QStringLiteral("yolov4-tiny.weights")),
+                       modelPath(QStringLiteral("coco.names")))
 {
     //this->timer = new QTimer(this);
 }
@@ -94,7 +112,20 @@ void CameraManager::processFrame()
             if(currentMode == "Face Detection")
                 faceDetector.detect(mat);
             else if (currentMode == "Object Detection") {
-                objectDetector.detect(mat);
+                // 保持旧行为：每 3 帧才真正推理一次，其余帧原样显示。
+                if (++m_frameId % 3 == 0)
+                {
+                    visionlab::FramePacket packet;
+                    packet.frameId = m_frameId;
+                    packet.captureTimestamp = std::chrono::steady_clock::now();
+                    packet.sourceId = "camera:0";
+                    packet.image = mat;
+
+                    // 在克隆帧上绘制，遵守 FramePacket::image 只读契约。
+                    cv::Mat annotated = mat.clone();
+                    m_renderer.render(annotated, m_objectDetector.detect(packet));
+                    mat = annotated;
+                }
             }
             else if (currentMode == "Motion Detection") {
                 motionDetector.detect(mat);
