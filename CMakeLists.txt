@@ -50,6 +50,7 @@ add_library(visionlab_core STATIC
     core/Detection.h
     core/PipelineStats.h
     core/BoundedQueue.h
+    core/LatestResult.h
     detectors/IDetector.h
     video/IVideoSource.h
 )
