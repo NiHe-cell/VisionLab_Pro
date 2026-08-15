@@ -40,6 +40,10 @@ add_executable(tst_modemapping ModeMappingTest.cpp)
 target_link_libraries(tst_modemapping PRIVATE visionlab_core Qt6::Core Qt6::Test)
 add_test(NAME modemapping COMMAND tst_modemapping)
 
+add_executable(tst_boundedqueue BoundedQueueTest.cpp)
+target_link_libraries(tst_boundedqueue PRIVATE visionlab_core Qt6::Core Qt6::Test)
+add_test(NAME boundedqueue COMMAND tst_boundedqueue)
+
 if(WIN32)
     # 让测试可执行文件在 ctest 下能解析 Qt 与 OpenCV 的 DLL。
     # 预编译 OpenCV 标准目录布局：<root>/build/x64/<toolset>/{lib,bin}
@@ -47,7 +51,7 @@ if(WIN32)
     set(visionlab_tests
         smoke framepacket idetector detectionrenderer
         yolodecoding ssddecoding motiondetector ivideosource
-        camerasource modemapping)
+        camerasource modemapping boundedqueue)
     set_tests_properties(${visionlab_tests} PROPERTIES
         ENVIRONMENT "PATH=$<TARGET_FILE_DIR:Qt6::Core>\;${VISIONLAB_OPENCV_BIN}\;$ENV{PATH}")
 endif()
