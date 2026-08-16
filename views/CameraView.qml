@@ -52,7 +52,7 @@ Item {
 
         Text {
             anchors.centerIn: parent
-            text: "Camera Off"
+            text: I18n.cameraOff
             color: "white"
             font.pixelSize: 22
             opacity: VisionController.running ? 0 : 1

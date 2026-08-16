@@ -110,6 +110,8 @@ qt_add_executable(appVisionLab
     app.rc
 )
 
+set_source_files_properties(views/I18n.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
+
 qt_add_qml_module(appVisionLab
     URI VisionLab
     VERSION 1.0
@@ -119,10 +121,12 @@ qt_add_qml_module(appVisionLab
         views/TitleBar.qml
         views/ControlButton.qml
         views/CameraView.qml
+        views/I18n.qml
 
     SOURCES
         controllers/WindowController.h controllers/WindowController.cpp
         controllers/VisionController.h controllers/VisionController.cpp
+        controllers/LocaleController.h controllers/LocaleController.cpp
         utilities/CameraManager.h utilities/CameraManager.cpp
         utilities/CameraImageProvider.h utilities/CameraImageProvider.cpp
 

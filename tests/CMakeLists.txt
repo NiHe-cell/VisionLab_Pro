@@ -97,6 +97,14 @@ target_link_libraries(tst_cameramanager PRIVATE
 target_include_directories(tst_cameramanager PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_SOURCE_DIR})
 add_test(NAME cameramanager COMMAND tst_cameramanager)
 
+add_executable(tst_localecontroller
+    LocaleControllerTest.cpp
+    ${CMAKE_SOURCE_DIR}/controllers/LocaleController.cpp
+    ${CMAKE_SOURCE_DIR}/controllers/LocaleController.h)
+target_link_libraries(tst_localecontroller PRIVATE Qt6::Core Qt6::Test)
+target_include_directories(tst_localecontroller PRIVATE ${CMAKE_SOURCE_DIR})
+add_test(NAME localecontroller COMMAND tst_localecontroller)
+
 if(WIN32)
     # 让测试可执行文件在 ctest 下能解析 Qt 与 OpenCV 的 DLL。
     # 预编译 OpenCV 标准目录布局：<root>/build/x64/<toolset>/{lib,bin}
@@ -106,7 +114,7 @@ if(WIN32)
         yolodecoding ssddecoding motiondetector ivideosource
         camerasource modemapping boundedqueue latestresult captureworker
         inferenceworker latencywindow statsprobe visionpipeline
-        pipelineoverload pipelinelifecycle cameramanager)
+        pipelineoverload pipelinelifecycle cameramanager localecontroller)
     set_tests_properties(${visionlab_tests} PROPERTIES
         ENVIRONMENT "PATH=$<TARGET_FILE_DIR:Qt6::Core>\;${VISIONLAB_OPENCV_BIN}\;$ENV{PATH}")
 endif()

@@ -43,7 +43,7 @@ Item {
         }
 
         Text {
-            text: qsTr("Vision Lab")
+            text: I18n.appTitle
             color: "white"
             font.pixelSize: 15
             font.bold: true
@@ -67,6 +67,29 @@ Item {
         anchors.right: parent.right
         anchors.rightMargin: 8
         anchors.verticalCenter: parent.verticalCenter
+
+        Rectangle {
+            width: 40
+            height: 22
+            radius: 6
+            color: "#1E293B"
+            border.color: "#334155"
+            anchors.verticalCenter: parent.verticalCenter
+
+            Text {
+                anchors.centerIn: parent
+                text: I18n.languageButton
+                color: "white"
+                font.pixelSize: 12
+                font.bold: true
+            }
+
+            MouseArea {
+                anchors.fill: parent
+                cursorShape: Qt.PointingHandCursor
+                onClicked: LocaleController.toggle()
+            }
+        }
 
         ControlButton { backgroundColor: "#FFD230"; onClicked: WindowController.minimize() }
         ControlButton { backgroundColor: "#05DF72"; onClicked: WindowController.maximize() }

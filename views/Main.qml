@@ -54,7 +54,7 @@ Window {
                     spacing: 8
 
                     Rectangle {
-                        Layout.preferredWidth: 100
+                        Layout.preferredWidth: 120
                         Layout.preferredHeight: 32
                         radius: 8
                         color: VisionController.running ? "#FF637E" : "#155DFC"
@@ -62,7 +62,7 @@ Window {
 
                         Text {
                             anchors.centerIn: parent
-                            text: VisionController.running ?  "Stop Camera" : "Start Camera"
+                            text: VisionController.running ? I18n.stopCamera : I18n.startCamera
                             font.pixelSize: 12
                             color: "#fff"
                         }
@@ -96,7 +96,7 @@ Window {
 
                             Text {
                                 anchors.centerIn: parent
-                                text: modelData
+                                text: I18n.modeLabel(modelData)
                                 font.pixelSize: 12
                                 color: root.currentSelectedProcessor === modelData ?  "#fff" : "#1C69A8"
                             }

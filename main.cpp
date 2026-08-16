@@ -9,12 +9,15 @@
 
 #include "controllers/WindowController.h"
 #include "controllers/VisionController.h"
+#include "controllers/LocaleController.h"
 #include "utilities/CameraImageProvider.h"
 #include "utilities/CameraManager.h"
 
 int main(int argc, char *argv[])
 {
     QApplication app(argc, argv);
+    app.setOrganizationName(QStringLiteral("VisionLab"));
+    app.setApplicationName(QStringLiteral("VisionLab"));
 
     app.setWindowIcon(QIcon(":/assets/logo.ico"));
 
@@ -24,9 +27,11 @@ int main(int argc, char *argv[])
     engine.addImageProvider("camera", new CameraImageProvider(&camera));
     engine.rootContext()->setContextProperty("camera", &camera);
 
-
     VisionController visionController(&camera);
     engine.rootContext()->setContextProperty("VisionController", &visionController);
+
+    LocaleController localeController;
+    engine.rootContext()->setContextProperty("LocaleController", &localeController);
 
     engine.loadFromModule("VisionLab", "Main");
 
