@@ -11,11 +11,13 @@ InferenceWorker::InferenceWorker(BoundedQueue<FramePacket>& in,
                                  LatestResult<PresentedFrame>& out,
                                  DetectorProvider detector,
                                  StatsProbe& stats,
+                                 std::function<void()> onPresented,
                                  DetectionRenderer renderer)
     : m_in(in)
     , m_out(out)
     , m_detector(std::move(detector))
     , m_stats(stats)
+    , m_onPresented(std::move(onPresented))
     , m_renderer(std::move(renderer))
 {
 }
@@ -75,6 +77,8 @@ void InferenceWorker::run(std::stop_token stop)
         m_out.publish(std::move(presented));
         m_stats.onInferred(inferenceMs, endToEndMs);
         m_stats.setQueueDepth(m_in.size());
+        if (m_onPresented)
+            m_onPresented();
     }
 }
 

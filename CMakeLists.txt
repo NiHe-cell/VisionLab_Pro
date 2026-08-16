@@ -141,6 +141,7 @@ target_link_libraries(appVisionLab PRIVATE
     visionlab_rendering
     visionlab_detectors
     visionlab_video
+    visionlab_pipeline
     Qt6::Core
     Qt6::Widgets
     Qt6::Quick

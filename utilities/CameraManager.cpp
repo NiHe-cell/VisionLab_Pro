@@ -1,18 +1,18 @@
 #include "CameraManager.h"
 
+#include <map>
+
 #include <QCoreApplication>
 #include <QDebug>
 #include <QDir>
-#include <QThread>
-
-#include <opencv2/imgproc.hpp>
+#include <QMetaObject>
+#include <QMutexLocker>
 
 #include "detectors/DetectorFactory.h"
 #include "video/CameraSource.h"
 
 namespace {
 
-// 模型文件随 QML 模块资源一同被复制到 <应用目录>/VisionLab/models。
 std::string modelDirPath()
 {
     return QDir(QCoreApplication::applicationDirPath())
@@ -20,121 +20,119 @@ std::string modelDirPath()
         .toStdString();
 }
 
-} // namespace
-
-CameraManager::CameraManager()
-    : m_source(std::make_unique<visionlab::CameraSource>(0))
+std::unique_ptr<visionlab::VisionPipeline> makeProductionPipeline()
 {
+    std::map<visionlab::DetectionMode, std::unique_ptr<visionlab::IDetector>> detectors;
     const std::string modelDir = modelDirPath();
     for (const visionlab::DetectionMode mode :
          {visionlab::DetectionMode::Face,
           visionlab::DetectionMode::Object,
           visionlab::DetectionMode::Motion})
     {
-        m_detectors.emplace(mode, visionlab::createDetector(mode, modelDir));
+        detectors.emplace(mode, visionlab::createDetector(mode, modelDir));
     }
+    return std::make_unique<visionlab::VisionPipeline>(
+        std::make_unique<visionlab::CameraSource>(0), std::move(detectors));
+}
+
+} // namespace
+
+CameraManager::CameraManager()
+    : CameraManager(makeProductionPipeline())
+{
+}
+
+CameraManager::CameraManager(std::unique_ptr<visionlab::VisionPipeline> pipeline)
+    : m_pipeline(std::move(pipeline))
+{
+    if (m_pipeline)
+        m_pipeline->setMode(visionlab::DetectionMode::Face);
+    bindPresentedCallback();
+}
+
+CameraManager::~CameraManager()
+{
+    if (m_pipeline)
+        m_pipeline->stop();
+}
+
+void CameraManager::bindPresentedCallback()
+{
+    if (!m_pipeline)
+        return;
+    m_pipeline->setPresentedCallback([this] {
+        QMetaObject::invokeMethod(this, &CameraManager::notifyFrame, Qt::QueuedConnection);
+    });
 }
 
 bool CameraManager::start()
 {
-    if (m_running)
+    if (!m_pipeline)
+        return false;
+    if (m_pipeline->isRunning())
         return true;
 
-    if (!m_source->open())
+    if (!m_pipeline->start())
     {
-        qWarning() << "CameraManager: 打开视频源失败:"
-                   << QString::fromStdString(m_source->lastError());
+        qWarning() << "CameraManager: 打开视频源失败";
         return false;
     }
-
-    m_frameId = 0;
-    m_running = true;
-
-    // 捕获循环仍沿用原有后台线程（Phase 2 替换为 jthread + 有界队列）。
-    std::thread([this]() { processFrame(); }).detach();
-
     return true;
 }
 
 bool CameraManager::stop()
 {
-    if (!m_running)
+    if (!m_pipeline || !m_pipeline->isRunning())
         return false;
 
-    m_running = false;
-    m_source->close();
-
-    m_frame = QImage();
+    m_pipeline->stop();
+    {
+        QMutexLocker lock(&m_frameMutex);
+        m_frame = QImage();
+    }
     emit frameCleared();
-
     return true;
 }
 
 void CameraManager::setMode(visionlab::DetectionMode mode)
 {
-    m_mode = mode;
+    if (m_pipeline)
+        m_pipeline->setMode(mode);
 }
 
-void CameraManager::processFrame()
+void CameraManager::notifyFrame()
 {
-    try
+    if (!m_pipeline || !m_pipeline->isRunning())
+        return;
+
+    const auto presented = m_pipeline->latest();
+    if (!presented || presented->rgb.empty())
+        return;
+
+    const cv::Mat& rgb = presented->rgb;
+    QImage next(rgb.data,
+                rgb.cols,
+                rgb.rows,
+                static_cast<int>(rgb.step),
+                QImage::Format_RGB888);
+    next = next.copy();
+
     {
-        while (m_running)
-        {
-            cv::Mat mat;
-            if (!m_source->read(mat))
-                continue;
-
-            ++m_frameId;
-
-            visionlab::FramePacket packet;
-            packet.frameId = m_frameId;
-            packet.captureTimestamp = std::chrono::steady_clock::now();
-            packet.sourceId = m_source->sourceId();
-            packet.image = mat;
-
-            const visionlab::DetectionMode mode = m_mode.load();
-            const auto it = m_detectors.find(mode);
-            visionlab::IDetector* detector =
-                it != m_detectors.end() ? it->second.get() : nullptr;
-
-            // 保持旧行为：Object 模式每 3 帧才真正推理一次。
-            const bool skipFrame =
-                mode == visionlab::DetectionMode::Object && m_frameId % 3 != 0;
-
-            if (detector && detector->isReady() && !skipFrame)
-            {
-                // 在克隆帧上绘制，遵守 FramePacket::image 只读契约。
-                cv::Mat annotated = mat.clone();
-                m_renderer.render(annotated, detector->detect(packet));
-                mat = annotated;
-            }
-
-            cv::cvtColor(mat, mat, cv::COLOR_BGR2RGB);
-
-            m_frame = QImage(mat.data,
-                             mat.cols,
-                             mat.rows,
-                             static_cast<int>(mat.step),
-                             QImage::Format_RGB888)
-                          .copy();
-
-            if (!m_running)
-                break;
-
-            emit frameChanged();
-
-            QThread::msleep(15);
-        }
+        QMutexLocker lock(&m_frameMutex);
+        m_frame = std::move(next);
     }
-    catch (const cv::Exception& e)
-    {
-        qWarning() << "CameraManager: 捕获循环异常退出:" << e.what();
-        m_running = false;
-    }
+    emit frameChanged();
 }
 
 QImage CameraManager::frame() const
 {
+    QMutexLocker lock(&m_frameMutex);
     return m_frame;
+}
+
+visionlab::PipelineStats CameraManager::statsSnapshot() const
+{
+    if (!m_pipeline)
+        return {};
+    return m_pipeline->stats();
 }

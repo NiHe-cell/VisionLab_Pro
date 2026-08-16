@@ -83,6 +83,20 @@ target_link_libraries(tst_pipelinelifecycle PRIVATE visionlab_pipeline Qt6::Core
 target_include_directories(tst_pipelinelifecycle PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 add_test(NAME pipelinelifecycle COMMAND tst_pipelinelifecycle)
 
+add_executable(tst_cameramanager
+    CameraManagerTest.cpp
+    ${CMAKE_SOURCE_DIR}/utilities/CameraManager.cpp
+    ${CMAKE_SOURCE_DIR}/utilities/CameraManager.h)
+target_link_libraries(tst_cameramanager PRIVATE
+    visionlab_pipeline
+    visionlab_detectors
+    visionlab_video
+    Qt6::Core
+    Qt6::Gui
+    Qt6::Test)
+target_include_directories(tst_cameramanager PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_SOURCE_DIR})
+add_test(NAME cameramanager COMMAND tst_cameramanager)
+
 if(WIN32)
     # 让测试可执行文件在 ctest 下能解析 Qt 与 OpenCV 的 DLL。
     # 预编译 OpenCV 标准目录布局：<root>/build/x64/<toolset>/{lib,bin}
@@ -92,7 +106,7 @@ if(WIN32)
         yolodecoding ssddecoding motiondetector ivideosource
         camerasource modemapping boundedqueue latestresult captureworker
         inferenceworker latencywindow statsprobe visionpipeline
-        pipelineoverload pipelinelifecycle)
+        pipelineoverload pipelinelifecycle cameramanager)
     set_tests_properties(${visionlab_tests} PROPERTIES
         ENVIRONMENT "PATH=$<TARGET_FILE_DIR:Qt6::Core>\;${VISIONLAB_OPENCV_BIN}\;$ENV{PATH}")
 endif()

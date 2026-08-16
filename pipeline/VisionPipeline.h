@@ -2,6 +2,7 @@
 #define VISIONPIPELINE_H
 
 #include <atomic>
+#include <functional>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -49,6 +50,9 @@ public:
     std::optional<PresentedFrame> latest() const;
     PipelineStats stats() const;
 
+    // 在推理线程、publish 之后调用。回调不得做 GUI 工作；编排层应 QueuedConnection 切回 GUI。
+    void setPresentedCallback(std::function<void()> callback);
+
 private:
     IDetector* currentDetector();
     void joinWorkers();
@@ -68,6 +72,7 @@ private:
     std::atomic<DetectionMode> m_mode{DetectionMode::Face};
     std::atomic<bool> m_running{false};
     std::mutex m_lifecycle;
+    std::function<void()> m_onPresented;
 };
 
 } // namespace visionlab

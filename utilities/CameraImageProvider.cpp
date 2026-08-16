@@ -1,21 +1,18 @@
-/*
- * Author - Muhammed Suwaneh
-*/
-
 #include "CameraImageProvider.h"
 
-CameraImageProvider::CameraImageProvider(CameraManager *camera) : QQuickImageProvider(QQuickImageProvider::Image), m_camera(camera) {}
-
-QImage CameraImageProvider::requestImage(
-    const QString &,
-    QSize *size,
-    const QSize &requestedSize)
+CameraImageProvider::CameraImageProvider(CameraManager* camera)
+    : QQuickImageProvider(QQuickImageProvider::Image)
+    , m_camera(camera)
 {
-    QImage img = this->m_camera->frame();
+}
 
-    if (img.isNull()) {
-        return QImage(); // QML will retry
-    }
+QImage CameraImageProvider::requestImage(const QString&,
+                                         QSize* size,
+                                         const QSize& requestedSize)
+{
+    QImage img = m_camera->frame();
+    if (img.isNull())
+        return {};
 
     if (size)
         *size = img.size();

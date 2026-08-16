@@ -30,7 +30,7 @@ bool VisionPipeline::start()
         m_queueCapacity, OverflowPolicy::DropOldest);
     m_captureWorker = std::make_unique<CaptureWorker>(*m_source, *m_queue, m_stats);
     m_inferenceWorker = std::make_unique<InferenceWorker>(
-        *m_queue, m_latest, [this] { return currentDetector(); }, m_stats);
+        *m_queue, m_latest, [this] { return currentDetector(); }, m_stats, m_onPresented);
 
     m_captureThread = std::jthread([this](std::stop_token stop) {
         m_captureWorker->run(stop);
@@ -71,6 +71,11 @@ std::optional<PresentedFrame> VisionPipeline::latest() const
 PipelineStats VisionPipeline::stats() const
 {
     return m_stats.snapshot();
+}
+
+void VisionPipeline::setPresentedCallback(std::function<void()> callback)
+{
+    m_onPresented = std::move(callback);
 }
 
 IDetector* VisionPipeline::currentDetector()

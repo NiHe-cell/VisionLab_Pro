@@ -26,6 +26,7 @@ public:
                     LatestResult<PresentedFrame>& out,
                     DetectorProvider detector,
                     StatsProbe& stats,
+                    std::function<void()> onPresented = {},
                     DetectionRenderer renderer = {});
 
     void run(std::stop_token stop);
@@ -35,6 +36,7 @@ private:
     LatestResult<PresentedFrame>& m_out;
     DetectorProvider m_detector;
     StatsProbe& m_stats;
+    std::function<void()> m_onPresented;
     DetectionRenderer m_renderer;
 };
 
