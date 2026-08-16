@@ -2,62 +2,10 @@
 
 #include <memory>
 
+#include "fakes/FakeVideoSource.h"
 #include "video/IVideoSource.h"
 
 using visionlab::IVideoSource;
-
-namespace {
-
-// 内存假视频源：按脚本产出固定数量的合成帧，用于锁定接口契约。
-class FakeVideoSource : public IVideoSource
-{
-public:
-    explicit FakeVideoSource(int frameCount, std::string id = "fake:0")
-        : m_frameCount(frameCount), m_id(std::move(id))
-    {
-    }
-
-    bool open() override
-    {
-        m_open = true;
-        m_readCount = 0;
-        m_lastError.clear();
-        return true;
-    }
-
-    bool read(cv::Mat& frame) override
-    {
-        if (!m_open)
-        {
-            m_lastError = "read before open";
-            return false;
-        }
-        if (m_readCount >= m_frameCount)
-        {
-            m_lastError = "end of stream";
-            return false;
-        }
-        // 每帧填充不同的灰度值，便于区分帧内容。
-        frame = cv::Mat(4, 4, CV_8UC1, cv::Scalar(m_readCount % 255));
-        ++m_readCount;
-        return true;
-    }
-
-    void close() override { m_open = false; }
-
-    bool isOpen() const override { return m_open; }
-    std::string sourceId() const override { return m_id; }
-    std::string lastError() const override { return m_lastError; }
-
-private:
-    int m_frameCount;
-    std::string m_id;
-    bool m_open = false;
-    int m_readCount = 0;
-    std::string m_lastError;
-};
-
-} // namespace
 
 class IVideoSourceTest : public QObject
 {

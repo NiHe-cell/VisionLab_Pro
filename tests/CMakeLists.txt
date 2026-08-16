@@ -30,6 +30,7 @@ add_test(NAME motiondetector COMMAND tst_motiondetector)
 
 add_executable(tst_ivideosource IVideoSourceTest.cpp)
 target_link_libraries(tst_ivideosource PRIVATE visionlab_core Qt6::Core Qt6::Test)
+target_include_directories(tst_ivideosource PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 add_test(NAME ivideosource COMMAND tst_ivideosource)
 
 add_executable(tst_camerasource CameraSourceTest.cpp)
@@ -48,6 +49,11 @@ add_executable(tst_latestresult LatestResultTest.cpp)
 target_link_libraries(tst_latestresult PRIVATE visionlab_core Qt6::Core Qt6::Test)
 add_test(NAME latestresult COMMAND tst_latestresult)
 
+add_executable(tst_captureworker CaptureWorkerTest.cpp)
+target_link_libraries(tst_captureworker PRIVATE visionlab_pipeline Qt6::Core Qt6::Test)
+target_include_directories(tst_captureworker PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+add_test(NAME captureworker COMMAND tst_captureworker)
+
 if(WIN32)
     # 让测试可执行文件在 ctest 下能解析 Qt 与 OpenCV 的 DLL。
     # 预编译 OpenCV 标准目录布局：<root>/build/x64/<toolset>/{lib,bin}
@@ -55,7 +61,7 @@ if(WIN32)
     set(visionlab_tests
         smoke framepacket idetector detectionrenderer
         yolodecoding ssddecoding motiondetector ivideosource
-        camerasource modemapping boundedqueue latestresult)
+        camerasource modemapping boundedqueue latestresult captureworker)
     set_tests_properties(${visionlab_tests} PROPERTIES
         ENVIRONMENT "PATH=$<TARGET_FILE_DIR:Qt6::Core>\;${VISIONLAB_OPENCV_BIN}\;$ENV{PATH}")
 endif()

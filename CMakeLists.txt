@@ -89,6 +89,14 @@ add_library(visionlab_video STATIC
 )
 target_link_libraries(visionlab_video PUBLIC visionlab_core)
 
+# 实时管线工作线程：纯 C++，不链接 Qt。
+add_library(visionlab_pipeline STATIC
+    pipeline/CaptureWorker.h
+    pipeline/CaptureWorker.cpp
+)
+target_link_libraries(visionlab_pipeline PUBLIC visionlab_core)
+target_include_directories(visionlab_pipeline PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+
 qt_add_executable(appVisionLab
     main.cpp
     app.rc
