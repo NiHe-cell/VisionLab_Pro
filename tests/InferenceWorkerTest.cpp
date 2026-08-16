@@ -11,6 +11,7 @@
 #include "fakes/FakeDetector.h"
 #include "fakes/SlowDetector.h"
 #include "pipeline/InferenceWorker.h"
+#include "pipeline/StatsProbe.h"
 
 using visionlab::BoundedQueue;
 using visionlab::FramePacket;
@@ -18,6 +19,7 @@ using visionlab::InferenceWorker;
 using visionlab::LatestResult;
 using visionlab::OverflowPolicy;
 using visionlab::PresentedFrame;
+using visionlab::StatsProbe;
 
 namespace {
 
@@ -73,7 +75,8 @@ void InferenceWorkerTest::closeOnEmptyQueueExits()
     BoundedQueue<FramePacket> in(2, OverflowPolicy::DropOldest);
     LatestResult<PresentedFrame> out;
     FakeDetector detector;
-    InferenceWorker worker(in, out, [&] { return &detector; });
+    StatsProbe stats;
+    InferenceWorker worker(in, out, [&] { return &detector; }, stats);
 
     in.close();
     worker.run(std::stop_token{});
@@ -85,7 +88,8 @@ void InferenceWorkerTest::publishesDetectionsAndConvertsToRgb()
     BoundedQueue<FramePacket> in(4, OverflowPolicy::DropOldest);
     LatestResult<PresentedFrame> out;
     FakeDetector detector;
-    InferenceWorker worker(in, out, [&] { return &detector; });
+    StatsProbe stats;
+    InferenceWorker worker(in, out, [&] { return &detector; }, stats);
 
     QVERIFY(in.push(makeBgrPacket(7)));
     in.close();
@@ -113,7 +117,8 @@ void InferenceWorkerTest::notReadyStillPublishesEmptyDetections()
     LatestResult<PresentedFrame> out;
     FakeDetector detector;
     detector.setReady(false);
-    InferenceWorker worker(in, out, [&] { return &detector; });
+    StatsProbe stats;
+    InferenceWorker worker(in, out, [&] { return &detector; }, stats);
 
     QVERIFY(in.push(makeBgrPacket(3)));
     in.close();
@@ -131,7 +136,8 @@ void InferenceWorkerTest::emptyDetectionsKeepFrameSize()
     BoundedQueue<FramePacket> in(2, OverflowPolicy::DropOldest);
     LatestResult<PresentedFrame> out;
     SlowDetector detector{std::chrono::milliseconds(0)};
-    InferenceWorker worker(in, out, [&] { return &detector; });
+    StatsProbe stats;
+    InferenceWorker worker(in, out, [&] { return &detector; }, stats);
 
     QVERIFY(in.push(makeBgrPacket(1)));
     in.close();
@@ -149,7 +155,8 @@ void InferenceWorkerTest::slowDetectCanStopAfterQueueClose()
     BoundedQueue<FramePacket> in(2, OverflowPolicy::DropOldest);
     LatestResult<PresentedFrame> out;
     SlowDetector detector{std::chrono::milliseconds(40)};
-    InferenceWorker worker(in, out, [&] { return &detector; });
+    StatsProbe stats;
+    InferenceWorker worker(in, out, [&] { return &detector; }, stats);
 
     for (int i = 0; i < 8; ++i)
         QVERIFY(in.push(makeBgrPacket(i + 1)));

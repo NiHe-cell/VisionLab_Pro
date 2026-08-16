@@ -10,21 +10,21 @@
 #include "core/FramePacket.h"
 #include "fakes/FakeVideoSource.h"
 #include "pipeline/CaptureWorker.h"
+#include "pipeline/StatsProbe.h"
 
 using visionlab::BoundedQueue;
 using visionlab::CaptureWorker;
 using visionlab::FramePacket;
 using visionlab::OverflowPolicy;
+using visionlab::StatsProbe;
 
 namespace {
 
-bool waitAtLeast(const std::atomic<std::uint64_t>& value,
-                 std::uint64_t expected,
-                 int timeoutMs = 2000)
+bool waitCaptured(StatsProbe& stats, std::uint64_t expected, int timeoutMs = 2000)
 {
     const auto deadline = std::chrono::steady_clock::now()
                           + std::chrono::milliseconds(timeoutMs);
-    while (value.load() < expected)
+    while (stats.snapshot().capturedFrames < expected)
     {
         if (std::chrono::steady_clock::now() >= deadline)
             return false;
@@ -74,9 +74,8 @@ void CaptureWorkerTest::stampsMonotonicIdsAndSourceId()
     QVERIFY(source.open());
 
     BoundedQueue<FramePacket> queue(8, OverflowPolicy::DropOldest);
-    std::atomic<std::uint64_t> captured{0};
-    std::atomic<std::uint64_t> dropped{0};
-    CaptureWorker worker(source, queue, captured, dropped);
+    StatsProbe stats;
+    CaptureWorker worker(source, queue, stats);
 
     std::stop_source stop;
     std::atomic<bool> finished{false};
@@ -86,14 +85,14 @@ void CaptureWorkerTest::stampsMonotonicIdsAndSourceId()
     });
     JoinGuard join{thread};
 
-    QVERIFY(waitAtLeast(captured, 5));
+    QVERIFY(waitCaptured(stats, 5));
     stop.request_stop();
     source.close();
     queue.close();
     QVERIFY(waitFlag(finished));
 
-    QCOMPARE(captured.load(), std::uint64_t(5));
-    QCOMPARE(dropped.load(), std::uint64_t(0));
+    QCOMPARE(stats.snapshot().capturedFrames, std::uint64_t(5));
+    QCOMPARE(stats.snapshot().droppedFrames, std::uint64_t(0));
 
     std::vector<FramePacket> frames;
     FramePacket packet;
@@ -119,9 +118,8 @@ void CaptureWorkerTest::stopAndCloseUnblocksRun()
     QVERIFY(source.open());
 
     BoundedQueue<FramePacket> queue(2, OverflowPolicy::DropOldest);
-    std::atomic<std::uint64_t> captured{0};
-    std::atomic<std::uint64_t> dropped{0};
-    CaptureWorker worker(source, queue, captured, dropped);
+    StatsProbe stats;
+    CaptureWorker worker(source, queue, stats);
 
     std::stop_source stop;
     std::atomic<bool> finished{false};
@@ -143,9 +141,8 @@ void CaptureWorkerTest::dropOldestKeepsQueueBounded()
     QVERIFY(source.open());
 
     BoundedQueue<FramePacket> queue(2, OverflowPolicy::DropOldest);
-    std::atomic<std::uint64_t> captured{0};
-    std::atomic<std::uint64_t> dropped{0};
-    CaptureWorker worker(source, queue, captured, dropped);
+    StatsProbe stats;
+    CaptureWorker worker(source, queue, stats);
 
     std::stop_source stop;
     std::atomic<bool> finished{false};
@@ -155,10 +152,10 @@ void CaptureWorkerTest::dropOldestKeepsQueueBounded()
     });
     JoinGuard join{thread};
 
-    QVERIFY(waitAtLeast(captured, 20));
+    QVERIFY(waitCaptured(stats, 20));
     QVERIFY(queue.size() <= queue.capacity());
-    QVERIFY(dropped.load() > 0);
-    QCOMPARE(captured.load(), std::uint64_t(20));
+    QVERIFY(stats.snapshot().droppedFrames > 0);
+    QCOMPARE(stats.snapshot().capturedFrames, std::uint64_t(20));
 
     stop.request_stop();
     source.close();

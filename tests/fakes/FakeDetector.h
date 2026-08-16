@@ -1,7 +1,9 @@
 #ifndef FAKEDETECTOR_H
 #define FAKEDETECTOR_H
 
+#include <atomic>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "detectors/IDetector.h"
@@ -10,6 +12,11 @@
 class FakeDetector : public visionlab::IDetector
 {
 public:
+    explicit FakeDetector(std::string label = "fake-object")
+        : m_label(std::move(label))
+    {
+    }
+
     std::string name() const override { return "fake"; }
     visionlab::DetectionMode mode() const override
     {
@@ -19,24 +26,25 @@ public:
 
     std::vector<visionlab::Detection> detect(const visionlab::FramePacket& frame) override
     {
-        ++m_callCount;
+        m_callCount.fetch_add(1, std::memory_order_relaxed);
         if (!m_ready || frame.image.empty())
             return {};
 
         visionlab::Detection d;
         d.classId = 1;
-        d.label = "fake-object";
+        d.label = m_label;
         d.confidence = 0.9F;
         d.box = cv::Rect(1, 2, 3, 4);
         return {d};
     }
 
     void setReady(bool ready) { m_ready = ready; }
-    int callCount() const { return m_callCount; }
+    int callCount() const { return m_callCount.load(std::memory_order_relaxed); }
 
 private:
+    std::string m_label;
     bool m_ready = true;
-    int m_callCount = 0;
+    std::atomic<int> m_callCount{0};
 };
 
 #endif // FAKEDETECTOR_H

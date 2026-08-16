@@ -9,6 +9,7 @@
 #include "core/LatestResult.h"
 #include "core/PresentedFrame.h"
 #include "detectors/IDetector.h"
+#include "pipeline/StatsProbe.h"
 #include "rendering/DetectionRenderer.h"
 
 namespace visionlab {
@@ -24,6 +25,7 @@ public:
     InferenceWorker(BoundedQueue<FramePacket>& in,
                     LatestResult<PresentedFrame>& out,
                     DetectorProvider detector,
+                    StatsProbe& stats,
                     DetectionRenderer renderer = {});
 
     void run(std::stop_token stop);
@@ -32,6 +34,7 @@ private:
     BoundedQueue<FramePacket>& m_in;
     LatestResult<PresentedFrame>& m_out;
     DetectorProvider m_detector;
+    StatsProbe& m_stats;
     DetectionRenderer m_renderer;
 };
 

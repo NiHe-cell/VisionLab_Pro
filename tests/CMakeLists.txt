@@ -68,6 +68,11 @@ add_executable(tst_statsprobe StatsProbeTest.cpp)
 target_link_libraries(tst_statsprobe PRIVATE visionlab_pipeline Qt6::Core Qt6::Test)
 add_test(NAME statsprobe COMMAND tst_statsprobe)
 
+add_executable(tst_visionpipeline VisionPipelineTest.cpp)
+target_link_libraries(tst_visionpipeline PRIVATE visionlab_pipeline Qt6::Core Qt6::Test)
+target_include_directories(tst_visionpipeline PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+add_test(NAME visionpipeline COMMAND tst_visionpipeline)
+
 if(WIN32)
     # 让测试可执行文件在 ctest 下能解析 Qt 与 OpenCV 的 DLL。
     # 预编译 OpenCV 标准目录布局：<root>/build/x64/<toolset>/{lib,bin}
@@ -76,7 +81,7 @@ if(WIN32)
         smoke framepacket idetector detectionrenderer
         yolodecoding ssddecoding motiondetector ivideosource
         camerasource modemapping boundedqueue latestresult captureworker
-        inferenceworker latencywindow statsprobe)
+        inferenceworker latencywindow statsprobe visionpipeline)
     set_tests_properties(${visionlab_tests} PROPERTIES
         ENVIRONMENT "PATH=$<TARGET_FILE_DIR:Qt6::Core>\;${VISIONLAB_OPENCV_BIN}\;$ENV{PATH}")
 endif()

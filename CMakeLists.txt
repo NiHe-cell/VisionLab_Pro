@@ -99,6 +99,8 @@ add_library(visionlab_pipeline STATIC
     pipeline/InferenceWorker.cpp
     pipeline/StatsProbe.h
     pipeline/StatsProbe.cpp
+    pipeline/VisionPipeline.h
+    pipeline/VisionPipeline.cpp
 )
 target_link_libraries(visionlab_pipeline PUBLIC visionlab_core visionlab_rendering)
 target_include_directories(visionlab_pipeline PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})

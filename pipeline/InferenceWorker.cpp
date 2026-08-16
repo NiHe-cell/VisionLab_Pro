@@ -10,10 +10,12 @@ namespace visionlab {
 InferenceWorker::InferenceWorker(BoundedQueue<FramePacket>& in,
                                  LatestResult<PresentedFrame>& out,
                                  DetectorProvider detector,
+                                 StatsProbe& stats,
                                  DetectionRenderer renderer)
     : m_in(in)
     , m_out(out)
     , m_detector(std::move(detector))
+    , m_stats(stats)
     , m_renderer(std::move(renderer))
 {
 }
@@ -66,7 +68,13 @@ void InferenceWorker::run(std::stop_token stop)
             std::cerr << "[InferenceWorker] 呈现异常: " << e.what() << '\n';
         }
 
+        const double inferenceMs = presented.inferenceLatencyMs;
+        const double endToEndMs = std::chrono::duration<double, std::milli>(
+                                      std::chrono::steady_clock::now() - packet.captureTimestamp)
+                                      .count();
         m_out.publish(std::move(presented));
+        m_stats.onInferred(inferenceMs, endToEndMs);
+        m_stats.setQueueDepth(m_in.size());
     }
 }
 

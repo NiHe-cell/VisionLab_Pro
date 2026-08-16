@@ -1,12 +1,11 @@
 #ifndef CAPTUREWORKER_H
 #define CAPTUREWORKER_H
 
-#include <atomic>
-#include <cstdint>
 #include <stop_token>
 
 #include "core/BoundedQueue.h"
 #include "core/FramePacket.h"
+#include "pipeline/StatsProbe.h"
 #include "video/IVideoSource.h"
 
 namespace visionlab {
@@ -19,16 +18,14 @@ class CaptureWorker
 public:
     CaptureWorker(IVideoSource& source,
                   BoundedQueue<FramePacket>& out,
-                  std::atomic<std::uint64_t>& capturedFrames,
-                  std::atomic<std::uint64_t>& droppedFrames);
+                  StatsProbe& stats);
 
     void run(std::stop_token stop);
 
 private:
     IVideoSource& m_source;
     BoundedQueue<FramePacket>& m_out;
-    std::atomic<std::uint64_t>& m_captured;
-    std::atomic<std::uint64_t>& m_dropped;
+    StatsProbe& m_stats;
 };
 
 } // namespace visionlab

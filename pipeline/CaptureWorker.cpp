@@ -7,12 +7,10 @@ namespace visionlab {
 
 CaptureWorker::CaptureWorker(IVideoSource& source,
                              BoundedQueue<FramePacket>& out,
-                             std::atomic<std::uint64_t>& capturedFrames,
-                             std::atomic<std::uint64_t>& droppedFrames)
+                             StatsProbe& stats)
     : m_source(source)
     , m_out(out)
-    , m_captured(capturedFrames)
-    , m_dropped(droppedFrames)
+    , m_stats(stats)
 {
 }
 
@@ -42,12 +40,11 @@ void CaptureWorker::run(std::stop_token stop)
         if (!m_out.push(std::move(packet)))
             break;
 
-        m_captured.fetch_add(1, std::memory_order_relaxed);
+        m_stats.onCaptured();
         const std::size_t droppedNow = m_out.droppedCount();
         if (droppedNow > droppedBefore)
-        {
-            m_dropped.fetch_add(droppedNow - droppedBefore, std::memory_order_relaxed);
-        }
+            m_stats.onDropped(droppedNow - droppedBefore);
+        m_stats.setQueueDepth(m_out.size());
     }
 }
 
