@@ -51,6 +51,7 @@ add_library(visionlab_core STATIC
     core/PipelineStats.h
     core/BoundedQueue.h
     core/LatestResult.h
+    core/PresentedFrame.h
     detectors/IDetector.h
     video/IVideoSource.h
 )
@@ -93,8 +94,10 @@ target_link_libraries(visionlab_video PUBLIC visionlab_core)
 add_library(visionlab_pipeline STATIC
     pipeline/CaptureWorker.h
     pipeline/CaptureWorker.cpp
+    pipeline/InferenceWorker.h
+    pipeline/InferenceWorker.cpp
 )
-target_link_libraries(visionlab_pipeline PUBLIC visionlab_core)
+target_link_libraries(visionlab_pipeline PUBLIC visionlab_core visionlab_rendering)
 target_include_directories(visionlab_pipeline PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
 qt_add_executable(appVisionLab

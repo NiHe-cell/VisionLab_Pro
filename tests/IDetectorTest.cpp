@@ -3,43 +3,13 @@
 #include <memory>
 
 #include "detectors/IDetector.h"
+#include "fakes/FakeDetector.h"
 
-using visionlab::Detection;
 using visionlab::DetectionMode;
 using visionlab::FramePacket;
 using visionlab::IDetector;
 
 namespace {
-
-// 确定性的假检测器：证明接口可被实现、可多态替换、可有内部状态。
-class FakeDetector : public IDetector
-{
-public:
-    std::string name() const override { return "fake"; }
-    DetectionMode mode() const override { return DetectionMode::Object; }
-    bool isReady() const override { return m_ready; }
-
-    std::vector<Detection> detect(const FramePacket& frame) override
-    {
-        ++m_callCount; // 有状态：证明 detect 允许修改实现内部状态
-        if (!m_ready || frame.image.empty())
-            return {};
-
-        Detection d;
-        d.classId = 1;
-        d.label = "fake-object";
-        d.confidence = 0.9F;
-        d.box = cv::Rect(1, 2, 3, 4);
-        return {d};
-    }
-
-    void setReady(bool ready) { m_ready = ready; }
-    int callCount() const { return m_callCount; }
-
-private:
-    bool m_ready = true;
-    int m_callCount = 0;
-};
 
 FramePacket makePacket()
 {
