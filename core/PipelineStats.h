@@ -8,9 +8,8 @@ namespace visionlab {
 
 // 管线计数与耗时指标的聚合。
 //
-// Phase 1 只定义数据形状；真正写入这些字段的采集/推理工作线程将在
-// Phase 2 引入。由于字段将由工作线程写入、UI 线程采样，届时写入方
-// 必须使用原子或快照交接（具体方案在 Phase 2 决定）。
+// 由 StatsProbe 在工作线程写入、经 snapshot() 值拷贝交给 UI 抽样。
+// 不要每帧向 QML 发信号；编排层用定时器取快照。
 struct PipelineStats
 {
     std::uint64_t capturedFrames = 0;

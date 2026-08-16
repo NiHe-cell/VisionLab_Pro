@@ -49,6 +49,7 @@ add_library(visionlab_core STATIC
     core/FramePacket.h
     core/Detection.h
     core/PipelineStats.h
+    core/LatencyWindow.h
     core/BoundedQueue.h
     core/LatestResult.h
     core/PresentedFrame.h
@@ -96,6 +97,8 @@ add_library(visionlab_pipeline STATIC
     pipeline/CaptureWorker.cpp
     pipeline/InferenceWorker.h
     pipeline/InferenceWorker.cpp
+    pipeline/StatsProbe.h
+    pipeline/StatsProbe.cpp
 )
 target_link_libraries(visionlab_pipeline PUBLIC visionlab_core visionlab_rendering)
 target_include_directories(visionlab_pipeline PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
