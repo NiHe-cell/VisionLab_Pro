@@ -54,7 +54,7 @@ public:
             }
             m_readCount = 0;
         }
-        frame = cv::Mat(4, 4, CV_8UC1, cv::Scalar(m_readCount % 255));
+        frame = cv::Mat(4, 4, CV_8UC3, cv::Scalar(m_readCount % 255, 0, 0));
         ++m_readCount;
         return true;
     }
