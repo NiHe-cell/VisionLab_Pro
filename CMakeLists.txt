@@ -74,6 +74,8 @@ target_link_libraries(visionlab_rendering PUBLIC visionlab_core)
 add_library(visionlab_detectors STATIC
     detectors/YoloDecoding.h
     detectors/YoloDecoding.cpp
+    detectors/YoloPreprocess.h
+    detectors/YoloPreprocess.cpp
     detectors/SsdDecoding.h
     detectors/SsdDecoding.cpp
     detectors/ObjectDetector.h
