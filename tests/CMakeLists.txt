@@ -134,5 +134,5 @@ if(WIN32)
         inferenceworker latencywindow statsprobe visionpipeline
         pipelineoverload pipelinelifecycle cameramanager localecontroller)
     set_tests_properties(${visionlab_tests} PROPERTIES
-        ENVIRONMENT "PATH=$<TARGET_FILE_DIR:Qt6::Core>\;${VISIONLAB_OPENCV_BIN}\;$ENV{PATH}")
+        ENVIRONMENT "PATH=$<TARGET_FILE_DIR:Qt6::Core>\;${VISIONLAB_OPENCV_BIN}\;${ONNXRUNTIME_BIN_DIR}\;$ENV{PATH}")
 endif()

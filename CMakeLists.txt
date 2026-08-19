@@ -32,6 +32,20 @@ if(NOT OpenCV_FOUND)
         "  cmake -B build -DOpenCV_DIR=<opencv>/build/x64/vc16/lib")
 endif()
 
+# ONNX Runtime CPU：官方 zip 解压后的根目录（含 include/ 与 lib/）。
+#   -DOnnxRuntime_DIR=...     （推荐，会被缓存）
+#   OnnxRuntime_DIR 环境变量。
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
+set(OnnxRuntime_DIR "" CACHE PATH
+    "ONNX Runtime root containing include/ and lib/ (official CPU zip, 1.17+)")
+find_package(OnnxRuntime QUIET)
+if(NOT OnnxRuntime_FOUND)
+    message(FATAL_ERROR
+        "ONNX Runtime was not found.\n"
+        "Pass the extracted official CPU package root, e.g.:\n"
+        "  cmake -B build -DOnnxRuntime_DIR=<onnxruntime-win-x64>")
+endif()
+
 # Qt
 find_package(Qt6 REQUIRED COMPONENTS
     Core
@@ -62,6 +76,14 @@ add_library(visionlab_core STATIC
 target_include_directories(visionlab_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(visionlab_core PUBLIC ${OpenCV_LIBS})
 set_target_properties(visionlab_core PROPERTIES LINKER_LANGUAGE CXX)
+
+# ONNX Runtime 后端骨架：私有链接 ORT，不链接 Qt。检测器本阶段还不依赖此库。
+add_library(visionlab_inference STATIC
+    inference/OnnxRuntimeEngine.h
+    inference/OnnxRuntimeEngine.cpp
+)
+target_include_directories(visionlab_inference PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(visionlab_inference PUBLIC visionlab_core PRIVATE OnnxRuntime::OnnxRuntime)
 
 # 渲染层：Detection 标注的唯一写入方。不依赖 Qt / QML。
 add_library(visionlab_rendering STATIC
