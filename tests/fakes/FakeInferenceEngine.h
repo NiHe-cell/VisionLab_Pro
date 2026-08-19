@@ -43,7 +43,7 @@ public:
     {
         ++m_inferCount;
         visionlab::InferResult result;
-        if (!m_ready)
+        if (!m_ready || !m_inferOk)
         {
             result.ok = false;
             result.error = m_error.empty() ? "engine not ready" : m_error;
@@ -67,11 +67,13 @@ public:
     {
         m_outputs = std::move(outputs);
     }
+    void setInferOk(bool ok) { m_inferOk = ok; }
     int inferCount() const { return m_inferCount; }
 
 private:
     bool m_initializeOk = true;
     bool m_ready = false;
+    bool m_inferOk = true;
     std::string m_error;
     std::vector<visionlab::TensorView> m_outputs;
     visionlab::TensorMetadata m_inputMeta;

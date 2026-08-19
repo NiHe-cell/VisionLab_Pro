@@ -34,6 +34,11 @@ add_executable(tst_yolopreprocess YoloPreprocessTest.cpp)
 target_link_libraries(tst_yolopreprocess PRIVATE visionlab_detectors Qt6::Core Qt6::Test)
 add_test(NAME yolopreprocess COMMAND tst_yolopreprocess)
 
+add_executable(tst_yolodetector YoloDetectorTest.cpp)
+target_link_libraries(tst_yolodetector PRIVATE visionlab_detectors Qt6::Core Qt6::Test)
+target_include_directories(tst_yolodetector PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+add_test(NAME yolodetector COMMAND tst_yolodetector)
+
 add_executable(tst_ssddecoding SsdDecodingTest.cpp)
 target_link_libraries(tst_ssddecoding PRIVATE visionlab_detectors Qt6::Core Qt6::Test)
 add_test(NAME ssddecoding COMMAND tst_ssddecoding)
@@ -124,7 +129,7 @@ if(WIN32)
     get_filename_component(VISIONLAB_OPENCV_BIN "${OpenCV_DIR}/../bin" ABSOLUTE)
     set(visionlab_tests
         smoke framepacket modelconfig iinferenceengine idetector detectionrenderer
-        yolodecoding yolopreprocess ssddecoding motiondetector ivideosource
+        yolodecoding yolopreprocess yolodetector ssddecoding motiondetector ivideosource
         camerasource modemapping boundedqueue latestresult captureworker
         inferenceworker latencywindow statsprobe visionpipeline
         pipelineoverload pipelinelifecycle cameramanager localecontroller)

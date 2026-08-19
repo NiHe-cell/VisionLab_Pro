@@ -76,6 +76,8 @@ add_library(visionlab_detectors STATIC
     detectors/YoloDecoding.cpp
     detectors/YoloPreprocess.h
     detectors/YoloPreprocess.cpp
+    detectors/YoloDetector.h
+    detectors/YoloDetector.cpp
     detectors/SsdDecoding.h
     detectors/SsdDecoding.cpp
     detectors/ObjectDetector.h
