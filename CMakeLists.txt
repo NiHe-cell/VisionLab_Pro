@@ -57,6 +57,7 @@ add_library(visionlab_core STATIC
     video/IVideoSource.h
     inference/InferenceTypes.h
     inference/ModelConfig.h
+    inference/IInferenceEngine.h
 )
 target_include_directories(visionlab_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(visionlab_core PUBLIC ${OpenCV_LIBS})
