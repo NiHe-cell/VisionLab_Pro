@@ -17,6 +17,25 @@ target_link_libraries(tst_iinferenceengine PRIVATE visionlab_core Qt6::Core Qt6:
 target_include_directories(tst_iinferenceengine PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 add_test(NAME iinferenceengine COMMAND tst_iinferenceengine)
 
+add_executable(tst_onnxruntimeengine OnnxRuntimeEngineTest.cpp)
+target_link_libraries(tst_onnxruntimeengine PRIVATE visionlab_inference Qt6::Core Qt6::Test)
+target_compile_definitions(tst_onnxruntimeengine PRIVATE
+    VISIONLAB_TEST_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/fixtures"
+    VISIONLAB_MODELS_DIR="${CMAKE_SOURCE_DIR}/models")
+add_test(NAME onnxruntimeengine COMMAND tst_onnxruntimeengine)
+# Windows 的 System32 自带旧版 onnxruntime.dll（当前机是 1.17），会抢在 PATH 之前加载。
+# 把与头文件匹配的 DLL 拷到测试可执行文件旁，保证加载 1.19+。
+add_custom_command(TARGET tst_onnxruntimeengine POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "$<TARGET_FILE:OnnxRuntime::OnnxRuntime>"
+        "$<TARGET_FILE_DIR:tst_onnxruntimeengine>")
+if(EXISTS "${ONNXRUNTIME_BIN_DIR}/onnxruntime_providers_shared.dll")
+    add_custom_command(TARGET tst_onnxruntimeengine POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${ONNXRUNTIME_BIN_DIR}/onnxruntime_providers_shared.dll"
+            "$<TARGET_FILE_DIR:tst_onnxruntimeengine>")
+endif()
+
 add_executable(tst_idetector IDetectorTest.cpp)
 target_link_libraries(tst_idetector PRIVATE visionlab_core Qt6::Core Qt6::Test)
 target_include_directories(tst_idetector PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
@@ -128,7 +147,7 @@ if(WIN32)
     # 预编译 OpenCV 标准目录布局：<root>/build/x64/<toolset>/{lib,bin}
     get_filename_component(VISIONLAB_OPENCV_BIN "${OpenCV_DIR}/../bin" ABSOLUTE)
     set(visionlab_tests
-        smoke framepacket modelconfig iinferenceengine idetector detectionrenderer
+        smoke framepacket modelconfig iinferenceengine onnxruntimeengine idetector detectionrenderer
         yolodecoding yolopreprocess yolodetector ssddecoding motiondetector ivideosource
         camerasource modemapping boundedqueue latestresult captureworker
         inferenceworker latencywindow statsprobe visionpipeline
