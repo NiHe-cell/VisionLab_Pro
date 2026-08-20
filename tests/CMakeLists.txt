@@ -158,6 +158,19 @@ target_link_libraries(tst_localecontroller PRIVATE Qt6::Core Qt6::Test)
 target_include_directories(tst_localecontroller PRIVATE ${CMAKE_SOURCE_DIR})
 add_test(NAME localecontroller COMMAND tst_localecontroller)
 
+# 只断言缺模型退出码与 identity 夹具输出字段，不把真实耗时当门槛。
+file(GENERATE
+    OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/OnnxCpuBenchmarkPaths.h"
+    CONTENT "#pragma once
+#define BENCH_ONNX_CPU R\"path($<TARGET_FILE:bench_onnx_cpu>)path\"
+#define VISIONLAB_IDENTITY_ONNX R\"path(${CMAKE_CURRENT_SOURCE_DIR}/fixtures/identity_f32_1x3x2x2.onnx)path\"
+")
+add_executable(tst_onnxcpubench OnnxCpuBenchmarkTest.cpp)
+add_dependencies(tst_onnxcpubench bench_onnx_cpu)
+target_link_libraries(tst_onnxcpubench PRIVATE Qt6::Core Qt6::Test)
+target_include_directories(tst_onnxcpubench PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
+add_test(NAME onnxcpubench COMMAND tst_onnxcpubench)
+
 if(WIN32)
     # 让测试可执行文件在 ctest 下能解析 Qt 与 OpenCV 的 DLL。
     # 预编译 OpenCV 标准目录布局：<root>/build/x64/<toolset>/{lib,bin}
@@ -167,7 +180,8 @@ if(WIN32)
         yolodecoding yolopreprocess yolodetector detectorfactory ssddecoding motiondetector ivideosource
         camerasource modemapping boundedqueue latestresult captureworker
         inferenceworker latencywindow statsprobe visionpipeline
-        pipelineoverload pipelinelifecycle cameramanager localecontroller)
+        pipelineoverload pipelinelifecycle cameramanager localecontroller
+        onnxcpubench)
     set_tests_properties(${visionlab_tests} PROPERTIES
         ENVIRONMENT "PATH=$<TARGET_FILE_DIR:Qt6::Core>\;${VISIONLAB_OPENCV_BIN}\;${ONNXRUNTIME_BIN_DIR}\;$ENV{PATH}")
 endif()

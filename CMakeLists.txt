@@ -201,6 +201,23 @@ set_target_properties(appVisionLab PROPERTIES
     WIN32_EXECUTABLE TRUE
 )
 
+# CPU 推理基准：走 OnnxRuntimeEngine::infer，不进默认 ctest 计时。
+add_executable(bench_onnx_cpu benchmarks/OnnxCpuBenchmark.cpp)
+target_link_libraries(bench_onnx_cpu PRIVATE visionlab_inference)
+target_compile_definitions(bench_onnx_cpu PRIVATE
+    "VISIONLAB_BUILD_TYPE=\"$<CONFIG>\""
+    "VISIONLAB_DEFAULT_MODEL=\"${CMAKE_SOURCE_DIR}/models/yolov4-tiny.onnx\"")
+add_custom_command(TARGET bench_onnx_cpu POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "$<TARGET_FILE:OnnxRuntime::OnnxRuntime>"
+        "$<TARGET_FILE_DIR:bench_onnx_cpu>")
+if(EXISTS "${ONNXRUNTIME_BIN_DIR}/onnxruntime_providers_shared.dll")
+    add_custom_command(TARGET bench_onnx_cpu POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${ONNXRUNTIME_BIN_DIR}/onnxruntime_providers_shared.dll"
+            "$<TARGET_FILE_DIR:bench_onnx_cpu>")
+endif()
+
 include(CTest)
 if(BUILD_TESTING)
     add_subdirectory(tests)
