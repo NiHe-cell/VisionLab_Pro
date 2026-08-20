@@ -45,8 +45,10 @@ Purpose: Detect human faces in the live camera stream.
 - Object Detection
 
 Model: YOLOv4-Tiny
-Files: yolov4-tiny.cfg, yolov4-tiny.weights, coco.names
-Framework: OpenCV DNN (Darknet backend)
+Files: yolov4-tiny.onnx, coco.names
+Framework: ONNX Runtime CPU (via IInferenceEngine)
+
+Place `yolov4-tiny.onnx` next to `coco.names` under `models/`. See `models/README.md` for the expected tensor layout. Darknet `.cfg` / `.weights` are no longer used.
 
 ![Screenshot](screenshots/ObjectDetection.png)
 

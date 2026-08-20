@@ -77,13 +77,26 @@ target_include_directories(visionlab_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(visionlab_core PUBLIC ${OpenCV_LIBS})
 set_target_properties(visionlab_core PROPERTIES LINKER_LANGUAGE CXX)
 
-# ONNX Runtime 后端骨架：私有链接 ORT，不链接 Qt。检测器本阶段还不依赖此库。
+# ONNX Runtime CPU 后端：私有链接 ORT，不链接 Qt。YoloDetector 经工厂注入此引擎。
 add_library(visionlab_inference STATIC
     inference/OnnxRuntimeEngine.h
     inference/OnnxRuntimeEngine.cpp
 )
 target_include_directories(visionlab_inference PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(visionlab_inference PUBLIC visionlab_core PRIVATE OnnxRuntime::OnnxRuntime)
+
+# Windows System32 自带旧版 onnxruntime.dll，会抢在 PATH 之前加载。
+# 拷到构建目录后，测试与 app 可执行文件与 DLL 同目录。
+add_custom_command(TARGET visionlab_inference POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "$<TARGET_FILE:OnnxRuntime::OnnxRuntime>"
+        "${CMAKE_BINARY_DIR}")
+if(EXISTS "${ONNXRUNTIME_BIN_DIR}/onnxruntime_providers_shared.dll")
+    add_custom_command(TARGET visionlab_inference POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${ONNXRUNTIME_BIN_DIR}/onnxruntime_providers_shared.dll"
+            "${CMAKE_BINARY_DIR}")
+endif()
 
 # 渲染层：Detection 标注的唯一写入方。不依赖 Qt / QML。
 add_library(visionlab_rendering STATIC
@@ -102,8 +115,6 @@ add_library(visionlab_detectors STATIC
     detectors/YoloDetector.cpp
     detectors/SsdDecoding.h
     detectors/SsdDecoding.cpp
-    detectors/ObjectDetector.h
-    detectors/ObjectDetector.cpp
     detectors/FaceDetector.h
     detectors/FaceDetector.cpp
     detectors/MotionDetector.h
@@ -111,7 +122,7 @@ add_library(visionlab_detectors STATIC
     detectors/DetectorFactory.h
     detectors/DetectorFactory.cpp
 )
-target_link_libraries(visionlab_detectors PUBLIC visionlab_core)
+target_link_libraries(visionlab_detectors PUBLIC visionlab_core visionlab_inference)
 
 # 视频采集：IVideoSource 实现。不依赖 Qt / QML，不引入线程。
 add_library(visionlab_video STATIC
@@ -139,6 +150,11 @@ qt_add_executable(appVisionLab
     app.rc
 )
 
+set(VISIONLAB_YOLO_ONNX_RESOURCE)
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/models/yolov4-tiny.onnx")
+    set(VISIONLAB_YOLO_ONNX_RESOURCE models/yolov4-tiny.onnx)
+endif()
+
 set_source_files_properties(views/I18n.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 
 qt_add_qml_module(appVisionLab
@@ -163,10 +179,9 @@ qt_add_qml_module(appVisionLab
         assets/logo.png
         assets/logo.ico
         models/coco.names
-        models/yolov4-tiny.cfg
-        models/yolov4-tiny.weights
         models/res10_300x300_ssd_iter_140000.caffemodel
         models/deploy.prototxt
+        ${VISIONLAB_YOLO_ONNX_RESOURCE}
 )
 
 target_link_libraries(appVisionLab PRIVATE
