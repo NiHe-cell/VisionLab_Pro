@@ -85,6 +85,7 @@ add_library(visionlab_inference STATIC
     inference/OnnxRuntimeCudaEngine.cpp
     inference/InferenceEngineFactory.h
     inference/InferenceEngineFactory.cpp
+    inference/InferenceSelection.h
 )
 target_include_directories(visionlab_inference PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(visionlab_inference PUBLIC visionlab_core PRIVATE OnnxRuntime::OnnxRuntime)

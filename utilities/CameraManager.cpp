@@ -9,6 +9,8 @@
 #include <QMutexLocker>
 
 #include "detectors/DetectorFactory.h"
+#include "inference/InferenceEngineFactory.h"
+#include "inference/InferenceSelection.h"
 #include "video/CameraSource.h"
 
 namespace {
@@ -20,8 +22,42 @@ std::string modelDirPath()
         .toStdString();
 }
 
+void warnInvalidInferenceEnv()
+{
+    const QByteArray backend = qgetenv("VISIONLAB_INFERENCE_BACKEND");
+    if (!backend.isEmpty()
+        && !visionlab::parseInferenceBackend(backend.toStdString()).has_value())
+    {
+        qWarning() << "CameraManager: unknown VISIONLAB_INFERENCE_BACKEND"
+                   << backend << "- using onnx-cpu";
+    }
+
+    const QByteArray precision = qgetenv("VISIONLAB_INFERENCE_PRECISION");
+    if (!precision.isEmpty()
+        && !visionlab::parseInferencePrecision(precision.toStdString()).has_value())
+    {
+        qWarning() << "CameraManager: unknown VISIONLAB_INFERENCE_PRECISION"
+                   << precision << "- using fp32";
+    }
+
+    const QByteArray device = qgetenv("VISIONLAB_INFERENCE_DEVICE");
+    if (!device.isEmpty())
+    {
+        bool ok = false;
+        const int parsed = device.toInt(&ok);
+        if (!ok || parsed < 0)
+        {
+            qWarning() << "CameraManager: invalid VISIONLAB_INFERENCE_DEVICE"
+                       << device << "- using 0";
+        }
+    }
+}
+
 std::unique_ptr<visionlab::VisionPipeline> makeProductionPipeline()
 {
+    warnInvalidInferenceEnv();
+    const visionlab::InferenceSelection selection = visionlab::inferenceSelectionFromEnv();
+
     std::map<visionlab::DetectionMode, std::unique_ptr<visionlab::IDetector>> detectors;
     const std::string modelDir = modelDirPath();
     for (const visionlab::DetectionMode mode :
@@ -29,7 +65,12 @@ std::unique_ptr<visionlab::VisionPipeline> makeProductionPipeline()
           visionlab::DetectionMode::Object,
           visionlab::DetectionMode::Motion})
     {
-        detectors.emplace(mode, visionlab::createDetector(mode, modelDir));
+        detectors.emplace(mode,
+                          visionlab::createDetector(mode,
+                                                    modelDir,
+                                                    selection.backend,
+                                                    selection.precision,
+                                                    selection.deviceId));
     }
     return std::make_unique<visionlab::VisionPipeline>(
         std::make_unique<visionlab::CameraSource>(0), std::move(detectors));

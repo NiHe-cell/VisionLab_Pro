@@ -2,10 +2,12 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdlib>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "inference/InferenceSelection.h"
 #include "inference/OnnxRuntimeCudaEngine.h"
 #include "inference/OnnxRuntimeEngine.h"
 
@@ -102,6 +104,31 @@ std::optional<InferencePrecision> parseInferencePrecision(std::string_view text)
     if (key == "fp16")
         return InferencePrecision::Fp16;
     return std::nullopt;
+}
+
+InferenceSelection inferenceSelectionFromEnv()
+{
+    InferenceSelection selection;
+
+    if (const char* backend = std::getenv("VISIONLAB_INFERENCE_BACKEND"))
+    {
+        if (const auto parsed = parseInferenceBackend(backend))
+            selection.backend = *parsed;
+    }
+    if (const char* precision = std::getenv("VISIONLAB_INFERENCE_PRECISION"))
+    {
+        if (const auto parsed = parseInferencePrecision(precision))
+            selection.precision = *parsed;
+    }
+    if (const char* device = std::getenv("VISIONLAB_INFERENCE_DEVICE"))
+    {
+        char* end = nullptr;
+        const long parsed = std::strtol(device, &end, 10);
+        if (end != device && *end == '\0' && parsed >= 0 && parsed <= 1'000'000)
+            selection.deviceId = static_cast<int>(parsed);
+    }
+
+    return selection;
 }
 
 } // namespace visionlab

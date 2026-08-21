@@ -20,7 +20,11 @@ std::string joinPath(const std::string& dir, const char* file)
 
 } // namespace
 
-std::unique_ptr<IDetector> createDetector(DetectionMode mode, const std::string& modelDir)
+std::unique_ptr<IDetector> createDetector(DetectionMode mode,
+                                          const std::string& modelDir,
+                                          InferenceBackend backend,
+                                          InferencePrecision precision,
+                                          int deviceId)
 {
     switch (mode)
     {
@@ -35,8 +39,9 @@ std::unique_ptr<IDetector> createDetector(DetectionMode mode, const std::string&
         config.classNamesPath = std::filesystem::path(modelDir) / "coco.names";
         config.inputWidth = 320;
         config.inputHeight = 320;
-        config.backend = InferenceBackend::OnnxRuntimeCpu;
-        config.precision = InferencePrecision::Fp32;
+        config.backend = backend;
+        config.precision = precision;
+        config.deviceId = deviceId;
         return std::make_unique<YoloDetector>(
             createInferenceEngine(config), std::move(config));
     }

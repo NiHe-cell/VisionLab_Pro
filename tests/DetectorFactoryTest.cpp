@@ -9,6 +9,7 @@
 using visionlab::DetectionMode;
 using visionlab::FramePacket;
 using visionlab::IDetector;
+using visionlab::InferenceBackend;
 
 namespace {
 
@@ -33,11 +34,20 @@ class DetectorFactoryTest : public QObject
     Q_OBJECT
 
 private slots:
+    void initTestCase();
     void objectModeNameIsYoloV4Tiny();
     void missingOnnxIsNotReady();
     void objectModeLoadsOnnxWithoutDarknetFiles();
     void motionDoesNotNeedModels();
+    void cudaObjectModeIsNotReadyWithoutGpuSession();
 };
+
+void DetectorFactoryTest::initTestCase()
+{
+    qunsetenv("VISIONLAB_INFERENCE_BACKEND");
+    qunsetenv("VISIONLAB_INFERENCE_PRECISION");
+    qunsetenv("VISIONLAB_INFERENCE_DEVICE");
+}
 
 void DetectorFactoryTest::objectModeNameIsYoloV4Tiny()
 {
@@ -90,6 +100,19 @@ void DetectorFactoryTest::motionDoesNotNeedModels()
     const auto detector = visionlab::createDetector(DetectionMode::Motion, "");
     QVERIFY(detector);
     QVERIFY(detector->isReady());
+}
+
+void DetectorFactoryTest::cudaObjectModeIsNotReadyWithoutGpuSession()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+
+    const auto detector = visionlab::createDetector(
+        DetectionMode::Object, dir.path().toStdString(), InferenceBackend::OnnxRuntimeCuda);
+    QVERIFY(detector);
+    if (detector->isReady())
+        QSKIP("CUDA EP is available on this machine; cannot assert the failure path");
+    QVERIFY(detector->detect(makeFrame()).empty());
 }
 
 QTEST_APPLESS_MAIN(DetectorFactoryTest)
