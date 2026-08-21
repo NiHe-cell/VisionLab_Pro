@@ -71,4 +71,16 @@ if(NOT TARGET OnnxRuntime::OnnxRuntime)
 
     set(ONNXRUNTIME_BIN_DIR "${ONNXRUNTIME_BIN_DIR}" CACHE INTERNAL
         "Directory containing onnxruntime.dll for test PATH")
+
+    find_file(ONNXRUNTIME_CUDA_EP_DLL
+        NAMES onnxruntime_providers_cuda.dll
+        HINTS
+            "${ONNXRUNTIME_BIN_DIR}"
+            "${_ort_lib_dir}"
+            "${OnnxRuntime_DIR}/bin"
+            "${OnnxRuntime_DIR}/lib"
+        NO_DEFAULT_PATH
+    )
+    set(ONNXRUNTIME_CUDA_EP_DLL "${ONNXRUNTIME_CUDA_EP_DLL}" CACHE INTERNAL
+        "Optional CUDA execution-provider DLL; empty when the CPU package is used")
 endif()

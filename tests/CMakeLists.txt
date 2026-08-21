@@ -28,6 +28,12 @@ function(visionlab_copy_ort_dlls target)
                 "${ONNXRUNTIME_BIN_DIR}/onnxruntime_providers_shared.dll"
                 "$<TARGET_FILE_DIR:${target}>")
     endif()
+    if(EXISTS "${ONNXRUNTIME_BIN_DIR}/onnxruntime_providers_cuda.dll")
+        add_custom_command(TARGET ${target} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${ONNXRUNTIME_BIN_DIR}/onnxruntime_providers_cuda.dll"
+                "$<TARGET_FILE_DIR:${target}>")
+    endif()
 endfunction()
 
 add_executable(tst_onnxruntimeengine OnnxRuntimeEngineTest.cpp)
@@ -46,6 +52,13 @@ target_compile_definitions(tst_inferenceenginefactory PRIVATE
     VISIONLAB_TEST_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/fixtures")
 add_test(NAME inferenceenginefactory COMMAND tst_inferenceenginefactory)
 visionlab_copy_ort_dlls(tst_inferenceenginefactory)
+
+add_executable(tst_onnxruntimecudaengine OnnxRuntimeCudaEngineTest.cpp)
+target_link_libraries(tst_onnxruntimecudaengine PRIVATE visionlab_inference Qt6::Core Qt6::Test)
+target_compile_definitions(tst_onnxruntimecudaengine PRIVATE
+    VISIONLAB_TEST_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/fixtures")
+add_test(NAME onnxruntimecudaengine COMMAND tst_onnxruntimecudaengine)
+visionlab_copy_ort_dlls(tst_onnxruntimecudaengine)
 
 add_executable(tst_idetector IDetectorTest.cpp)
 target_link_libraries(tst_idetector PRIVATE visionlab_core Qt6::Core Qt6::Test)
@@ -187,7 +200,7 @@ if(WIN32)
     # 预编译 OpenCV 标准目录布局：<root>/build/x64/<toolset>/{lib,bin}
     get_filename_component(VISIONLAB_OPENCV_BIN "${OpenCV_DIR}/../bin" ABSOLUTE)
     set(visionlab_tests
-        smoke framepacket modelconfig iinferenceengine onnxruntimeengine inferenceenginefactory idetector detectionrenderer
+        smoke framepacket modelconfig iinferenceengine onnxruntimeengine inferenceenginefactory onnxruntimecudaengine idetector detectionrenderer
         yolodecoding yolopreprocess yolodetector detectorfactory ssddecoding motiondetector ivideosource
         camerasource modemapping boundedqueue latestresult captureworker
         inferenceworker latencywindow statsprobe visionpipeline

@@ -81,6 +81,8 @@ set_target_properties(visionlab_core PROPERTIES LINKER_LANGUAGE CXX)
 add_library(visionlab_inference STATIC
     inference/OnnxRuntimeEngine.h
     inference/OnnxRuntimeEngine.cpp
+    inference/OnnxRuntimeCudaEngine.h
+    inference/OnnxRuntimeCudaEngine.cpp
     inference/InferenceEngineFactory.h
     inference/InferenceEngineFactory.cpp
 )
@@ -97,6 +99,12 @@ if(EXISTS "${ONNXRUNTIME_BIN_DIR}/onnxruntime_providers_shared.dll")
     add_custom_command(TARGET visionlab_inference POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             "${ONNXRUNTIME_BIN_DIR}/onnxruntime_providers_shared.dll"
+            "${CMAKE_BINARY_DIR}")
+endif()
+if(EXISTS "${ONNXRUNTIME_BIN_DIR}/onnxruntime_providers_cuda.dll")
+    add_custom_command(TARGET visionlab_inference POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${ONNXRUNTIME_BIN_DIR}/onnxruntime_providers_cuda.dll"
             "${CMAKE_BINARY_DIR}")
 endif()
 

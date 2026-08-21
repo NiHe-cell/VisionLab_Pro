@@ -6,6 +6,7 @@
 #include <utility>
 #include <vector>
 
+#include "inference/OnnxRuntimeCudaEngine.h"
 #include "inference/OnnxRuntimeEngine.h"
 
 namespace visionlab {
@@ -73,8 +74,7 @@ std::unique_ptr<IInferenceEngine> createInferenceEngine(const ModelConfig& confi
     case InferenceBackend::OnnxRuntimeCpu:
         return std::make_unique<OnnxRuntimeEngine>();
     case InferenceBackend::OnnxRuntimeCuda:
-        return std::make_unique<UnavailableInferenceEngine>(
-            "onnxruntime-cuda", "OnnxRuntimeCuda");
+        return std::make_unique<OnnxRuntimeCudaEngine>();
     case InferenceBackend::TensorRT:
         return std::make_unique<UnavailableInferenceEngine>("tensorrt", "TensorRT");
     }

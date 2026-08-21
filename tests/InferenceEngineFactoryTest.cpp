@@ -29,7 +29,7 @@ class InferenceEngineFactoryTest : public QObject
 
 private slots:
     void cpuIdentityInitializes();
-    void cudaBackendIsUnavailableObject();
+    void cudaBackendCreatesCudaEngine();
     void tensorRtBackendIsUnavailableObject();
     void neverReturnsNull();
     void parseBackendAliases();
@@ -53,7 +53,7 @@ void InferenceEngineFactoryTest::cpuIdentityInitializes()
     QVERIFY(engine->isReady());
 }
 
-void InferenceEngineFactoryTest::cudaBackendIsUnavailableObject()
+void InferenceEngineFactoryTest::cudaBackendCreatesCudaEngine()
 {
     ModelConfig config;
     config.modelPath = identityModelPath();
@@ -61,13 +61,7 @@ void InferenceEngineFactoryTest::cudaBackendIsUnavailableObject()
 
     const auto engine = createInferenceEngine(config);
     QVERIFY(engine);
-    QVERIFY(!engine->initialize(config));
-    QVERIFY(!engine->isReady());
-    const QString error = QString::fromStdString(engine->lastError());
-    QVERIFY(!error.contains(QStringLiteral("not implemented")));
-    QVERIFY(error.contains(QStringLiteral("OnnxRuntimeCuda"), Qt::CaseInsensitive)
-            || error.contains(QStringLiteral("onnxruntime-cuda"), Qt::CaseInsensitive));
-    QVERIFY(error.contains(QStringLiteral("not available"), Qt::CaseInsensitive));
+    QCOMPARE(engine->backendId(), std::string("onnxruntime-cuda"));
 }
 
 void InferenceEngineFactoryTest::tensorRtBackendIsUnavailableObject()
