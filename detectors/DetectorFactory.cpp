@@ -6,8 +6,8 @@
 #include "FaceDetector.h"
 #include "MotionDetector.h"
 #include "YoloDetector.h"
+#include "inference/InferenceEngineFactory.h"
 #include "inference/ModelConfig.h"
-#include "inference/OnnxRuntimeEngine.h"
 
 namespace visionlab {
 
@@ -38,7 +38,7 @@ std::unique_ptr<IDetector> createDetector(DetectionMode mode, const std::string&
         config.backend = InferenceBackend::OnnxRuntimeCpu;
         config.precision = InferencePrecision::Fp32;
         return std::make_unique<YoloDetector>(
-            std::make_unique<OnnxRuntimeEngine>(), std::move(config));
+            createInferenceEngine(config), std::move(config));
     }
     case DetectionMode::Motion:
         return std::make_unique<MotionDetector>();

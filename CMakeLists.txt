@@ -81,6 +81,8 @@ set_target_properties(visionlab_core PROPERTIES LINKER_LANGUAGE CXX)
 add_library(visionlab_inference STATIC
     inference/OnnxRuntimeEngine.h
     inference/OnnxRuntimeEngine.cpp
+    inference/InferenceEngineFactory.h
+    inference/InferenceEngineFactory.cpp
 )
 target_include_directories(visionlab_inference PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(visionlab_inference PUBLIC visionlab_core PRIVATE OnnxRuntime::OnnxRuntime)

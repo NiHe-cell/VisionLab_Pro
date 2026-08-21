@@ -17,6 +17,19 @@ target_link_libraries(tst_iinferenceengine PRIVATE visionlab_core Qt6::Core Qt6:
 target_include_directories(tst_iinferenceengine PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 add_test(NAME iinferenceengine COMMAND tst_iinferenceengine)
 
+function(visionlab_copy_ort_dlls target)
+    add_custom_command(TARGET ${target} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "$<TARGET_FILE:OnnxRuntime::OnnxRuntime>"
+            "$<TARGET_FILE_DIR:${target}>")
+    if(EXISTS "${ONNXRUNTIME_BIN_DIR}/onnxruntime_providers_shared.dll")
+        add_custom_command(TARGET ${target} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${ONNXRUNTIME_BIN_DIR}/onnxruntime_providers_shared.dll"
+                "$<TARGET_FILE_DIR:${target}>")
+    endif()
+endfunction()
+
 add_executable(tst_onnxruntimeengine OnnxRuntimeEngineTest.cpp)
 target_link_libraries(tst_onnxruntimeengine PRIVATE visionlab_inference Qt6::Core Qt6::Test)
 target_compile_definitions(tst_onnxruntimeengine PRIVATE
@@ -25,16 +38,14 @@ target_compile_definitions(tst_onnxruntimeengine PRIVATE
 add_test(NAME onnxruntimeengine COMMAND tst_onnxruntimeengine)
 # Windows 的 System32 自带旧版 onnxruntime.dll（当前机是 1.17），会抢在 PATH 之前加载。
 # 把与头文件匹配的 DLL 拷到测试可执行文件旁，保证加载 1.19+。
-add_custom_command(TARGET tst_onnxruntimeengine POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "$<TARGET_FILE:OnnxRuntime::OnnxRuntime>"
-        "$<TARGET_FILE_DIR:tst_onnxruntimeengine>")
-if(EXISTS "${ONNXRUNTIME_BIN_DIR}/onnxruntime_providers_shared.dll")
-    add_custom_command(TARGET tst_onnxruntimeengine POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "${ONNXRUNTIME_BIN_DIR}/onnxruntime_providers_shared.dll"
-            "$<TARGET_FILE_DIR:tst_onnxruntimeengine>")
-endif()
+visionlab_copy_ort_dlls(tst_onnxruntimeengine)
+
+add_executable(tst_inferenceenginefactory InferenceEngineFactoryTest.cpp)
+target_link_libraries(tst_inferenceenginefactory PRIVATE visionlab_inference Qt6::Core Qt6::Test)
+target_compile_definitions(tst_inferenceenginefactory PRIVATE
+    VISIONLAB_TEST_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/fixtures")
+add_test(NAME inferenceenginefactory COMMAND tst_inferenceenginefactory)
+visionlab_copy_ort_dlls(tst_inferenceenginefactory)
 
 add_executable(tst_idetector IDetectorTest.cpp)
 target_link_libraries(tst_idetector PRIVATE visionlab_core Qt6::Core Qt6::Test)
@@ -176,7 +187,7 @@ if(WIN32)
     # 预编译 OpenCV 标准目录布局：<root>/build/x64/<toolset>/{lib,bin}
     get_filename_component(VISIONLAB_OPENCV_BIN "${OpenCV_DIR}/../bin" ABSOLUTE)
     set(visionlab_tests
-        smoke framepacket modelconfig iinferenceengine onnxruntimeengine idetector detectionrenderer
+        smoke framepacket modelconfig iinferenceengine onnxruntimeengine inferenceenginefactory idetector detectionrenderer
         yolodecoding yolopreprocess yolodetector detectorfactory ssddecoding motiondetector ivideosource
         camerasource modemapping boundedqueue latestresult captureworker
         inferenceworker latencywindow statsprobe visionpipeline
