@@ -199,6 +199,33 @@ target_link_libraries(tst_onnxcpubench PRIVATE Qt6::Core Qt6::Test)
 target_include_directories(tst_onnxcpubench PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 add_test(NAME onnxcpubench COMMAND tst_onnxcpubench)
 
+if(VISIONLAB_ENABLE_TENSORRT)
+    add_executable(tst_cudaraii CudaRaiiTest.cpp)
+    target_link_libraries(tst_cudaraii PRIVATE
+        visionlab_inference
+        CUDA::cudart
+        Qt6::Core
+        Qt6::Test)
+    add_test(NAME cudaraii COMMAND tst_cudaraii)
+    visionlab_copy_ort_dlls(tst_cudaraii)
+    add_custom_command(TARGET tst_cudaraii POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "$<TARGET_FILE:CUDA::cudart>"
+            "$<TARGET_FILE_DIR:tst_cudaraii>")
+    if(TARGET TensorRT::nvinfer)
+        add_custom_command(TARGET tst_cudaraii POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "$<TARGET_FILE:TensorRT::nvinfer>"
+                "$<TARGET_FILE_DIR:tst_cudaraii>")
+    endif()
+    if(TARGET TensorRT::nvonnxparser)
+        add_custom_command(TARGET tst_cudaraii POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "$<TARGET_FILE:TensorRT::nvonnxparser>"
+                "$<TARGET_FILE_DIR:tst_cudaraii>")
+    endif()
+endif()
+
 if(WIN32)
     # 让测试可执行文件在 ctest 下能解析 Qt 与 OpenCV 的 DLL。
     # 预编译 OpenCV 标准目录布局：<root>/build/x64/<toolset>/{lib,bin}
@@ -210,6 +237,19 @@ if(WIN32)
         inferenceworker latencywindow statsprobe visionpipeline
         pipelineoverload pipelinelifecycle cameramanager localecontroller
         onnxcpubench)
+    if(VISIONLAB_ENABLE_TENSORRT)
+        list(APPEND visionlab_tests cudaraii)
+    endif()
+    set(_visionlab_test_path
+        "$<TARGET_FILE_DIR:Qt6::Core>\;${VISIONLAB_OPENCV_BIN}\;${ONNXRUNTIME_BIN_DIR}")
+    if(VISIONLAB_ENABLE_TENSORRT)
+        if(DEFINED CUDAToolkit_BIN_DIR AND CUDAToolkit_BIN_DIR)
+            string(APPEND _visionlab_test_path "\;${CUDAToolkit_BIN_DIR}")
+        endif()
+        if(DEFINED TENSORRT_BIN_DIR AND TENSORRT_BIN_DIR)
+            string(APPEND _visionlab_test_path "\;${TENSORRT_BIN_DIR}")
+        endif()
+    endif()
     set_tests_properties(${visionlab_tests} PROPERTIES
-        ENVIRONMENT "PATH=$<TARGET_FILE_DIR:Qt6::Core>\;${VISIONLAB_OPENCV_BIN}\;${ONNXRUNTIME_BIN_DIR}\;$ENV{PATH}")
+        ENVIRONMENT "PATH=${_visionlab_test_path}\;$ENV{PATH}")
 endif()

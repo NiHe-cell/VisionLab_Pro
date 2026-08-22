@@ -77,6 +77,42 @@ target_include_directories(visionlab_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(visionlab_core PUBLIC ${OpenCV_LIBS})
 set_target_properties(visionlab_core PROPERTIES LINKER_LANGUAGE CXX)
 
+# TensorRT 10 + CUDA RAII：默认关闭，CPU 构建不需要 NVIDIA 工具链。
+# 打开后必须同时找到 CUDA Toolkit 与 TensorRT 10，找不到就 configure 失败。
+option(VISIONLAB_ENABLE_TENSORRT
+    "Build CUDA RAII helpers and link TensorRT 10 (requires CUDA Toolkit + TensorRT)"
+    OFF)
+set(TensorRT_DIR "" CACHE PATH
+    "TensorRT 10 root containing include/ and lib/ (or extracted wheel layout)")
+set(CUDAToolkit_ROOT "" CACHE PATH
+    "CUDA Toolkit root (include/cuda_runtime.h, lib, bin)")
+
+if(VISIONLAB_ENABLE_TENSORRT)
+    if(CUDAToolkit_ROOT)
+        list(PREPEND CMAKE_PREFIX_PATH "${CUDAToolkit_ROOT}")
+    endif()
+    find_package(CUDAToolkit QUIET)
+    if(NOT CUDAToolkit_FOUND)
+        message(FATAL_ERROR
+            "VISIONLAB_ENABLE_TENSORRT=ON but CUDA Toolkit was not found.\n"
+            "Pass -DCUDAToolkit_ROOT=<toolkit-root> (include/cuda_runtime.h, lib, bin).\n"
+            "Do not leave the switch ON without a complete toolchain.")
+    endif()
+    find_package(TensorRT QUIET)
+    if(NOT TensorRT_FOUND)
+        message(FATAL_ERROR
+            "VISIONLAB_ENABLE_TENSORRT=ON but TensorRT 10 was not found.\n"
+            "Pass -DTensorRT_DIR=<TensorRT-10-root> containing include/NvInfer.h and lib/ "
+            "(nvinfer / nvonnxparser import libraries).\n"
+            "Do not leave the switch ON without a complete toolchain.")
+    endif()
+    if(NOT TENSORRT_VERSION_MAJOR STREQUAL "10")
+        message(FATAL_ERROR
+            "VISIONLAB_ENABLE_TENSORRT requires TensorRT 10.x, found '${TENSORRT_VERSION}'.\n"
+            "Pass -DTensorRT_DIR=<TensorRT-10-root>")
+    endif()
+endif()
+
 # ONNX Runtime CPU 后端：私有链接 ORT，不链接 Qt。YoloDetector 经工厂注入此引擎。
 add_library(visionlab_inference STATIC
     inference/OnnxRuntimeEngine.h
@@ -89,6 +125,21 @@ add_library(visionlab_inference STATIC
 )
 target_include_directories(visionlab_inference PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(visionlab_inference PUBLIC visionlab_core PRIVATE OnnxRuntime::OnnxRuntime)
+
+if(VISIONLAB_ENABLE_TENSORRT)
+    target_sources(visionlab_inference PRIVATE
+        inference/cuda/CudaStream.h
+        inference/cuda/CudaStream.cpp
+        inference/cuda/CudaDeviceBuffer.h
+        inference/cuda/CudaDeviceBuffer.cpp
+    )
+    target_link_libraries(visionlab_inference PRIVATE
+        CUDA::cudart
+        TensorRT::nvinfer
+        TensorRT::nvonnxparser
+    )
+    target_compile_definitions(visionlab_inference PUBLIC VISIONLAB_HAS_TENSORRT)
+endif()
 
 # Windows System32 自带旧版 onnxruntime.dll，会抢在 PATH 之前加载。
 # 拷到构建目录后，测试与 app 可执行文件与 DLL 同目录。
@@ -107,6 +158,24 @@ if(EXISTS "${ONNXRUNTIME_BIN_DIR}/onnxruntime_providers_cuda.dll")
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             "${ONNXRUNTIME_BIN_DIR}/onnxruntime_providers_cuda.dll"
             "${CMAKE_BINARY_DIR}")
+endif()
+if(VISIONLAB_ENABLE_TENSORRT)
+    add_custom_command(TARGET visionlab_inference POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "$<TARGET_FILE:CUDA::cudart>"
+            "${CMAKE_BINARY_DIR}")
+    if(TARGET TensorRT::nvinfer)
+        add_custom_command(TARGET visionlab_inference POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "$<TARGET_FILE:TensorRT::nvinfer>"
+                "${CMAKE_BINARY_DIR}")
+    endif()
+    if(TARGET TensorRT::nvonnxparser)
+        add_custom_command(TARGET visionlab_inference POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "$<TARGET_FILE:TensorRT::nvonnxparser>"
+                "${CMAKE_BINARY_DIR}")
+    endif()
 endif()
 
 # 渲染层：Detection 标注的唯一写入方。不依赖 Qt / QML。
