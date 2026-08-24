@@ -30,7 +30,11 @@ class InferenceEngineFactoryTest : public QObject
 private slots:
     void cpuIdentityInitializes();
     void cudaBackendCreatesCudaEngine();
+#ifdef VISIONLAB_HAS_TENSORRT
+    void tensorRtBackendCreatesTensorRtEngine();
+#else
     void tensorRtBackendIsUnavailableObject();
+#endif
     void neverReturnsNull();
     void parseBackendAliases();
     void parsePrecisionAliases();
@@ -64,6 +68,19 @@ void InferenceEngineFactoryTest::cudaBackendCreatesCudaEngine()
     QCOMPARE(engine->backendId(), std::string("onnxruntime-cuda"));
 }
 
+#ifdef VISIONLAB_HAS_TENSORRT
+void InferenceEngineFactoryTest::tensorRtBackendCreatesTensorRtEngine()
+{
+    ModelConfig config;
+    config.modelPath = identityModelPath();
+    config.backend = InferenceBackend::TensorRT;
+
+    const auto engine = createInferenceEngine(config);
+    QVERIFY(engine);
+    QCOMPARE(engine->backendId(), std::string("tensorrt"));
+    QVERIFY(engine->lastError().empty());
+}
+#else
 void InferenceEngineFactoryTest::tensorRtBackendIsUnavailableObject()
 {
     ModelConfig config;
@@ -77,9 +94,10 @@ void InferenceEngineFactoryTest::tensorRtBackendIsUnavailableObject()
     const QString error = QString::fromStdString(engine->lastError());
     QVERIFY(error.contains(QStringLiteral("TensorRT"), Qt::CaseInsensitive)
             || error.contains(QStringLiteral("tensorrt"), Qt::CaseInsensitive));
-    QVERIFY(error.contains(QStringLiteral("not available"), Qt::CaseInsensitive)
-            || error.contains(QStringLiteral("unavailable"), Qt::CaseInsensitive));
+    QVERIFY(error.contains(QStringLiteral("not enabled"), Qt::CaseInsensitive)
+            || error.contains(QStringLiteral("build time"), Qt::CaseInsensitive));
 }
+#endif
 
 void InferenceEngineFactoryTest::neverReturnsNull()
 {

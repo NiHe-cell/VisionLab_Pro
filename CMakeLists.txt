@@ -132,6 +132,8 @@ if(VISIONLAB_ENABLE_TENSORRT)
         inference/cuda/CudaStream.cpp
         inference/cuda/CudaDeviceBuffer.h
         inference/cuda/CudaDeviceBuffer.cpp
+        inference/TensorRTEngine.h
+        inference/TensorRTEngine.cpp
     )
     target_link_libraries(visionlab_inference PRIVATE
         CUDA::cudart

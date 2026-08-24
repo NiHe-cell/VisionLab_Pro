@@ -10,6 +10,9 @@
 #include "inference/InferenceSelection.h"
 #include "inference/OnnxRuntimeCudaEngine.h"
 #include "inference/OnnxRuntimeEngine.h"
+#ifdef VISIONLAB_HAS_TENSORRT
+#include "inference/TensorRTEngine.h"
+#endif
 
 namespace visionlab {
 
@@ -78,7 +81,12 @@ std::unique_ptr<IInferenceEngine> createInferenceEngine(const ModelConfig& confi
     case InferenceBackend::OnnxRuntimeCuda:
         return std::make_unique<OnnxRuntimeCudaEngine>();
     case InferenceBackend::TensorRT:
-        return std::make_unique<UnavailableInferenceEngine>("tensorrt", "TensorRT");
+#ifdef VISIONLAB_HAS_TENSORRT
+        return std::make_unique<TensorRTEngine>();
+#else
+        return std::make_unique<UnavailableInferenceEngine>(
+            "tensorrt", "TensorRT not enabled at build time");
+#endif
     }
 
     return std::make_unique<UnavailableInferenceEngine>("unknown", "requested backend");

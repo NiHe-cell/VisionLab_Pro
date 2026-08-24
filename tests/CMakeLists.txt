@@ -200,6 +200,34 @@ target_include_directories(tst_onnxcpubench PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 add_test(NAME onnxcpubench COMMAND tst_onnxcpubench)
 
 if(VISIONLAB_ENABLE_TENSORRT)
+    add_executable(tst_tensorrtengine TensorRTEngineTest.cpp)
+    target_link_libraries(tst_tensorrtengine PRIVATE
+        visionlab_inference
+        CUDA::cudart
+        Qt6::Core
+        Qt6::Test)
+    target_compile_definitions(tst_tensorrtengine PRIVATE
+        VISIONLAB_TEST_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/fixtures"
+        VISIONLAB_MODELS_DIR="${CMAKE_SOURCE_DIR}/models")
+    add_test(NAME tensorrtengine COMMAND tst_tensorrtengine)
+    visionlab_copy_ort_dlls(tst_tensorrtengine)
+    add_custom_command(TARGET tst_tensorrtengine POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "$<TARGET_FILE:CUDA::cudart>"
+            "$<TARGET_FILE_DIR:tst_tensorrtengine>")
+    if(TARGET TensorRT::nvinfer)
+        add_custom_command(TARGET tst_tensorrtengine POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "$<TARGET_FILE:TensorRT::nvinfer>"
+                "$<TARGET_FILE_DIR:tst_tensorrtengine>")
+    endif()
+    if(TARGET TensorRT::nvonnxparser)
+        add_custom_command(TARGET tst_tensorrtengine POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "$<TARGET_FILE:TensorRT::nvonnxparser>"
+                "$<TARGET_FILE_DIR:tst_tensorrtengine>")
+    endif()
+
     add_executable(tst_cudaraii CudaRaiiTest.cpp)
     target_link_libraries(tst_cudaraii PRIVATE
         visionlab_inference
@@ -238,7 +266,7 @@ if(WIN32)
         pipelineoverload pipelinelifecycle cameramanager localecontroller
         onnxcpubench)
     if(VISIONLAB_ENABLE_TENSORRT)
-        list(APPEND visionlab_tests cudaraii)
+        list(APPEND visionlab_tests cudaraii tensorrtengine)
     endif()
     set(_visionlab_test_path
         "$<TARGET_FILE_DIR:Qt6::Core>\;${VISIONLAB_OPENCV_BIN}\;${ONNXRUNTIME_BIN_DIR}")
