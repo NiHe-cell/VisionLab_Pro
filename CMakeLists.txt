@@ -283,8 +283,10 @@ set_target_properties(appVisionLab PROPERTIES
     WIN32_EXECUTABLE TRUE
 )
 
-# CPU 推理基准：走 OnnxRuntimeEngine::infer，不进默认 ctest 计时。
+# 推理基准：经 createInferenceEngine，ORT CPU / ORT CUDA / TensorRT。
+# 四次独立进程对比，勿在单进程连跑四种后端。不进默认 ctest 计时。
 add_executable(bench_onnx_cpu benchmarks/OnnxCpuBenchmark.cpp)
+add_executable(bench_inference ALIAS bench_onnx_cpu)
 target_link_libraries(bench_onnx_cpu PRIVATE visionlab_inference)
 target_compile_definitions(bench_onnx_cpu PRIVATE
     "VISIONLAB_BUILD_TYPE=\"$<CONFIG>\""
@@ -298,6 +300,31 @@ if(EXISTS "${ONNXRUNTIME_BIN_DIR}/onnxruntime_providers_shared.dll")
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             "${ONNXRUNTIME_BIN_DIR}/onnxruntime_providers_shared.dll"
             "$<TARGET_FILE_DIR:bench_onnx_cpu>")
+endif()
+if(EXISTS "${ONNXRUNTIME_BIN_DIR}/onnxruntime_providers_cuda.dll")
+    add_custom_command(TARGET bench_onnx_cpu POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${ONNXRUNTIME_BIN_DIR}/onnxruntime_providers_cuda.dll"
+            "$<TARGET_FILE_DIR:bench_onnx_cpu>")
+endif()
+if(VISIONLAB_ENABLE_TENSORRT)
+    target_link_libraries(bench_onnx_cpu PRIVATE CUDA::cudart)
+    add_custom_command(TARGET bench_onnx_cpu POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "$<TARGET_FILE:CUDA::cudart>"
+            "$<TARGET_FILE_DIR:bench_onnx_cpu>")
+    if(TARGET TensorRT::nvinfer)
+        add_custom_command(TARGET bench_onnx_cpu POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "$<TARGET_FILE:TensorRT::nvinfer>"
+                "$<TARGET_FILE_DIR:bench_onnx_cpu>")
+    endif()
+    if(TARGET TensorRT::nvonnxparser)
+        add_custom_command(TARGET bench_onnx_cpu POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "$<TARGET_FILE:TensorRT::nvonnxparser>"
+                "$<TARGET_FILE_DIR:bench_onnx_cpu>")
+    endif()
 endif()
 
 include(CTest)
