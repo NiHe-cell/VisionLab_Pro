@@ -1,5 +1,6 @@
 #include "TensorRTEngine.h"
 
+#include <cctype>
 #include <chrono>
 #include <cstdint>
 #include <filesystem>
@@ -88,6 +89,212 @@ std::string parserErrors(nvonnxparser::IParser& parser)
     return text;
 }
 
+std::int64_t utcMtimeSeconds(const std::filesystem::path& path)
+{
+    const auto fileTime = std::filesystem::last_write_time(path);
+    const auto sysTime = std::chrono::clock_cast<std::chrono::system_clock>(fileTime);
+    return std::chrono::duration_cast<std::chrono::seconds>(sysTime.time_since_epoch()).count();
+}
+
+std::string gpuSlug(int deviceId)
+{
+    cudaDeviceProp prop{};
+    if (cudaGetDeviceProperties(&prop, deviceId) != cudaSuccess)
+        return "gpu";
+
+    std::string slug;
+    for (const char c : std::string(prop.name))
+    {
+        if (std::isalnum(static_cast<unsigned char>(c)))
+            slug.push_back(c);
+        else if (!slug.empty() && slug.back() != '-')
+            slug.push_back('-');
+    }
+    while (!slug.empty() && slug.back() == '-')
+        slug.pop_back();
+    return slug.empty() ? std::string("gpu") : slug;
+}
+
+std::string trtVersionString()
+{
+    return std::to_string(NV_TENSORRT_MAJOR) + "." + std::to_string(NV_TENSORRT_MINOR) + "."
+        + std::to_string(NV_TENSORRT_PATCH);
+}
+
+std::string precisionTag(InferencePrecision precision)
+{
+    return precision == InferencePrecision::Fp16 ? "fp16" : "fp32";
+}
+
+std::filesystem::path cacheFilePath(const ModelConfig& config)
+{
+    const auto size = std::filesystem::file_size(config.modelPath);
+    std::string name = config.modelPath.stem().string();
+    name += "-s" + std::to_string(static_cast<unsigned long long>(size));
+    name += "-t" + std::to_string(utcMtimeSeconds(config.modelPath));
+    name += "-g" + gpuSlug(config.deviceId);
+    name += "-v" + trtVersionString();
+    name += "-p" + precisionTag(config.precision);
+    name += "-1x3x" + std::to_string(config.inputHeight) + "x"
+        + std::to_string(config.inputWidth);
+    name += ".engine";
+    return config.modelPath.parent_path() / ".trt-cache" / name;
+}
+
+struct EngineIo
+{
+    std::string inputName;
+    TensorMetadata inputMeta;
+    std::vector<std::string> outputNames;
+    std::vector<TensorMetadata> outputMeta;
+};
+
+bool readEngineIo(
+    nvinfer1::ICudaEngine& engine,
+    const ModelConfig& config,
+    EngineIo& io,
+    std::string& error)
+{
+    io = {};
+    const int32_t ioCount = engine.getNbIOTensors();
+    for (int32_t i = 0; i < ioCount; ++i)
+    {
+        const char* name = engine.getIOTensorName(i);
+        if (name == nullptr)
+        {
+            error = "engine I/O tensor is unnamed";
+            return false;
+        }
+        const nvinfer1::TensorIOMode mode = engine.getTensorIOMode(name);
+        if (engine.getTensorDataType(name) != nvinfer1::DataType::kFLOAT)
+        {
+            error = "deserialized engine tensor is not float32";
+            return false;
+        }
+        const nvinfer1::Dims dims = engine.getTensorShape(name);
+        if (hasDynamicDim(dims))
+        {
+            error = "dynamic engine tensor shape is not supported";
+            return false;
+        }
+        TensorMetadata meta;
+        meta.name = name;
+        meta.shape = dimsToShape(dims);
+        meta.dtype = "float32";
+        if (mode == nvinfer1::TensorIOMode::kINPUT)
+        {
+            if (!io.inputName.empty())
+            {
+                error = "TensorRTEngine expects exactly one model input";
+                return false;
+            }
+            if (dims.nbDims != 4 || dims.d[0] != 1 || dims.d[1] != 3
+                || dims.d[2] != config.inputHeight || dims.d[3] != config.inputWidth)
+            {
+                error = "deserialized engine input is not static 1x3xHxW float32 matching ModelConfig";
+                return false;
+            }
+            io.inputName = name;
+            io.inputMeta = std::move(meta);
+        }
+        else if (mode == nvinfer1::TensorIOMode::kOUTPUT)
+        {
+            io.outputNames.push_back(name);
+            io.outputMeta.push_back(std::move(meta));
+        }
+    }
+    if (io.inputName.empty())
+    {
+        error = "deserialized engine has no input";
+        return false;
+    }
+    if (io.outputNames.empty())
+    {
+        error = "deserialized engine has no outputs";
+        return false;
+    }
+    return true;
+}
+
+bool persistCache(
+    const std::filesystem::path& dest,
+    const void* data,
+    std::size_t bytes,
+    std::string& error)
+{
+    std::error_code ec;
+    std::filesystem::create_directories(dest.parent_path(), ec);
+    if (ec)
+    {
+        error = "failed to create TensorRT cache directory";
+        return false;
+    }
+
+    std::filesystem::path tmp = dest;
+    tmp += ".tmp";
+    {
+        std::ofstream out(tmp, std::ios::binary | std::ios::trunc);
+        if (!out)
+        {
+            error = "failed to open TensorRT cache temp file";
+            return false;
+        }
+        out.write(static_cast<const char*>(data), static_cast<std::streamsize>(bytes));
+        if (!out)
+        {
+            out.close();
+            std::filesystem::remove(tmp, ec);
+            error = "failed to write TensorRT cache temp file";
+            return false;
+        }
+    }
+
+    std::filesystem::rename(tmp, dest, ec);
+    if (ec)
+    {
+        std::filesystem::remove(dest, ec);
+        std::filesystem::rename(tmp, dest, ec);
+    }
+    if (ec)
+    {
+        std::filesystem::remove(tmp, ec);
+        error = "failed to publish TensorRT cache file";
+        return false;
+    }
+    return true;
+}
+
+void discardCache(const std::filesystem::path& dest)
+{
+    std::error_code ec;
+    std::filesystem::remove(dest, ec);
+}
+
+std::vector<char> readBinaryFile(const std::filesystem::path& path, std::string& error)
+{
+    std::ifstream in(path, std::ios::binary);
+    if (!in)
+    {
+        error = joinError("failed to read: ", path);
+        return {};
+    }
+    in.seekg(0, std::ios::end);
+    const auto fileSize = in.tellg();
+    if (fileSize <= 0)
+    {
+        error = joinError("empty file: ", path);
+        return {};
+    }
+    in.seekg(0, std::ios::beg);
+    std::vector<char> bytes(static_cast<std::size_t>(fileSize));
+    if (!in.read(bytes.data(), static_cast<std::streamsize>(bytes.size())))
+    {
+        error = joinError("failed to read: ", path);
+        return {};
+    }
+    return bytes;
+}
+
 class TrtLogger final : public nvinfer1::ILogger
 {
 public:
@@ -174,14 +381,10 @@ bool TensorRTEngine::initialize(const ModelConfig& config)
         m_impl->error = "TensorRTEngine only supports InferenceBackend::TensorRT";
         return false;
     }
-    if (config.precision == InferencePrecision::Fp16)
+    if (config.precision != InferencePrecision::Fp32
+        && config.precision != InferencePrecision::Fp16)
     {
-        m_impl->error = "FP16 is not enabled yet (T07)";
-        return false;
-    }
-    if (config.precision != InferencePrecision::Fp32)
-    {
-        m_impl->error = "TensorRTEngine only supports InferencePrecision::Fp32; FP16 in T07";
+        m_impl->error = "TensorRTEngine does not support InferencePrecision::Int8";
         return false;
     }
 
@@ -232,133 +435,146 @@ bool TensorRTEngine::initialize(const ModelConfig& config)
         if (!stream->valid())
             return fail("CUDA stream create failed: " + stream->lastError());
 
-        std::ifstream in(config.modelPath, std::ios::binary);
-        if (!in)
-            return fail(joinError("failed to read model: ", config.modelPath));
-        in.seekg(0, std::ios::end);
-        const auto fileSize = in.tellg();
-        if (fileSize <= 0)
-            return fail(joinError("empty model file: ", config.modelPath));
-        in.seekg(0, std::ios::beg);
-        std::vector<char> onnxBytes(static_cast<std::size_t>(fileSize));
-        if (!in.read(onnxBytes.data(), static_cast<std::streamsize>(onnxBytes.size())))
-            return fail(joinError("failed to read model: ", config.modelPath));
-
         TrtPtr<nvinfer1::IBuilder> builder{nvinfer1::createInferBuilder(m_impl->logger)};
         if (!builder)
             return fail("createInferBuilder failed");
-
-        TrtPtr<nvinfer1::INetworkDefinition> network{builder->createNetworkV2(0)};
-        if (!network)
-            return fail("createNetworkV2 failed");
-
-        TrtPtr<nvonnxparser::IParser> parser{
-            nvonnxparser::createParser(*network, m_impl->logger)};
-        if (!parser)
-            return fail("createParser failed");
-
-        const std::string modelPath = config.modelPath.string();
-        if (!parser->parse(onnxBytes.data(), onnxBytes.size(), modelPath.c_str()))
-        {
-            std::string message = parserErrors(*parser);
-            if (message.empty())
-                message = m_impl->logger.messages();
-            if (message.empty())
-                message = joinError("ONNX parse failed: ", config.modelPath);
-            return fail(std::move(message));
-        }
-
-        if (network->getNbInputs() != 1)
-            return fail("TensorRTEngine expects exactly one model input");
-
-        nvinfer1::ITensor* inputTensor = network->getInput(0);
-        if (inputTensor == nullptr || inputTensor->getName() == nullptr)
-            return fail("model input tensor is missing");
-        if (inputTensor->getType() != nvinfer1::DataType::kFLOAT)
-            return fail("TensorRTEngine expects float32 input");
-
-        const nvinfer1::Dims inputDims = inputTensor->getDimensions();
-        if (hasDynamicDim(inputDims))
-            return fail("dynamic input shape is not supported");
-        if (inputDims.nbDims != 4 || inputDims.d[0] != 1 || inputDims.d[1] != 3
-            || inputDims.d[2] != config.inputHeight || inputDims.d[3] != config.inputWidth)
-        {
-            return fail(
-                "input must be static 1x3xHxW matching ModelConfig.inputHeight/inputWidth");
-        }
-
-        if (network->getNbOutputs() < 1)
-            return fail("model has no outputs");
-
-        std::vector<std::string> outputNames;
-        std::vector<TensorMetadata> outputMeta;
-        outputNames.reserve(static_cast<std::size_t>(network->getNbOutputs()));
-        outputMeta.reserve(static_cast<std::size_t>(network->getNbOutputs()));
-        for (int32_t i = 0; i < network->getNbOutputs(); ++i)
-        {
-            nvinfer1::ITensor* outputTensor = network->getOutput(i);
-            if (outputTensor == nullptr || outputTensor->getName() == nullptr)
-                return fail("model output tensor is missing");
-            if (outputTensor->getType() != nvinfer1::DataType::kFLOAT)
-                return fail("TensorRTEngine expects float32 outputs");
-            const nvinfer1::Dims outputDims = outputTensor->getDimensions();
-            if (hasDynamicDim(outputDims))
-                return fail("dynamic output shape is not supported");
-
-            TensorMetadata meta;
-            meta.name = outputTensor->getName();
-            meta.shape = dimsToShape(outputDims);
-            meta.dtype = "float32";
-            outputNames.push_back(meta.name);
-            outputMeta.push_back(std::move(meta));
-        }
-
-        TrtPtr<nvinfer1::IBuilderConfig> builderConfig{builder->createBuilderConfig()};
-        if (!builderConfig)
-            return fail("createBuilderConfig failed");
-
-        TrtPtr<nvinfer1::IHostMemory> plan{
-            builder->buildSerializedNetwork(*network, *builderConfig)};
-        if (!plan || plan->data() == nullptr || plan->size() == 0)
-        {
-            std::string message = m_impl->logger.messages();
-            if (message.empty())
-                message = "buildSerializedNetwork failed";
-            return fail(std::move(message));
-        }
+        if (config.precision == InferencePrecision::Fp16 && !builder->platformHasFastFp16())
+            return fail("Fp16 is not supported on this device");
 
         TrtPtr<nvinfer1::IRuntime> runtime{nvinfer1::createInferRuntime(m_impl->logger)};
         if (!runtime)
             return fail("createInferRuntime failed");
 
-        TrtPtr<nvinfer1::ICudaEngine> engine{
-            runtime->deserializeCudaEngine(plan->data(), plan->size())};
-        if (!engine)
-            return fail("deserializeCudaEngine failed");
+        const std::filesystem::path cachePath = cacheFilePath(config);
+        TrtPtr<nvinfer1::ICudaEngine> cudaEngine;
+        EngineIo io;
 
-        const nvinfer1::Dims engineInputDims = engine->getTensorShape(inputTensor->getName());
-        if (engine->getTensorDataType(inputTensor->getName()) != nvinfer1::DataType::kFLOAT
-            || hasDynamicDim(engineInputDims) || engineInputDims.nbDims != 4
-            || engineInputDims.d[0] != 1 || engineInputDims.d[1] != 3
-            || engineInputDims.d[2] != config.inputHeight
-            || engineInputDims.d[3] != config.inputWidth)
+        std::error_code cacheExistsError;
+        if (std::filesystem::exists(cachePath, cacheExistsError))
         {
-            return fail(
-                "deserialized engine input is not static 1x3xHxW float32 matching ModelConfig");
+            std::string readError;
+            std::vector<char> blob = readBinaryFile(cachePath, readError);
+            if (!blob.empty())
+            {
+                cudaEngine.reset(runtime->deserializeCudaEngine(blob.data(), blob.size()));
+                std::string inspectError;
+                if (cudaEngine && readEngineIo(*cudaEngine, config, io, inspectError))
+                {
+                    // cache hit
+                }
+                else
+                {
+                    cudaEngine.reset();
+                    discardCache(cachePath);
+                }
+            }
+            else
+            {
+                discardCache(cachePath);
+            }
         }
 
-        TrtPtr<nvinfer1::IExecutionContext> context{engine->createExecutionContext()};
+        if (!cudaEngine)
+        {
+            std::string readError;
+            std::vector<char> onnxBytes = readBinaryFile(config.modelPath, readError);
+            if (onnxBytes.empty())
+                return fail(readError);
+
+            TrtPtr<nvinfer1::INetworkDefinition> network{builder->createNetworkV2(0)};
+            if (!network)
+                return fail("createNetworkV2 failed");
+
+            TrtPtr<nvonnxparser::IParser> parser{
+                nvonnxparser::createParser(*network, m_impl->logger)};
+            if (!parser)
+                return fail("createParser failed");
+
+            const std::string modelPath = config.modelPath.string();
+            if (!parser->parse(onnxBytes.data(), onnxBytes.size(), modelPath.c_str()))
+            {
+                std::string message = parserErrors(*parser);
+                if (message.empty())
+                    message = m_impl->logger.messages();
+                if (message.empty())
+                    message = joinError("ONNX parse failed: ", config.modelPath);
+                return fail(std::move(message));
+            }
+
+            if (network->getNbInputs() != 1)
+                return fail("TensorRTEngine expects exactly one model input");
+
+            nvinfer1::ITensor* inputTensor = network->getInput(0);
+            if (inputTensor == nullptr || inputTensor->getName() == nullptr)
+                return fail("model input tensor is missing");
+            if (inputTensor->getType() != nvinfer1::DataType::kFLOAT)
+                return fail("TensorRTEngine expects float32 input");
+
+            const nvinfer1::Dims inputDims = inputTensor->getDimensions();
+            if (hasDynamicDim(inputDims))
+                return fail("dynamic input shape is not supported");
+            if (inputDims.nbDims != 4 || inputDims.d[0] != 1 || inputDims.d[1] != 3
+                || inputDims.d[2] != config.inputHeight || inputDims.d[3] != config.inputWidth)
+            {
+                return fail(
+                    "input must be static 1x3xHxW matching ModelConfig.inputHeight/inputWidth");
+            }
+
+            if (network->getNbOutputs() < 1)
+                return fail("model has no outputs");
+
+            for (int32_t i = 0; i < network->getNbOutputs(); ++i)
+            {
+                nvinfer1::ITensor* outputTensor = network->getOutput(i);
+                if (outputTensor == nullptr || outputTensor->getName() == nullptr)
+                    return fail("model output tensor is missing");
+                if (outputTensor->getType() != nvinfer1::DataType::kFLOAT)
+                    return fail("TensorRTEngine expects float32 outputs");
+                if (hasDynamicDim(outputTensor->getDimensions()))
+                    return fail("dynamic output shape is not supported");
+            }
+
+            TrtPtr<nvinfer1::IBuilderConfig> builderConfig{builder->createBuilderConfig()};
+            if (!builderConfig)
+                return fail("createBuilderConfig failed");
+            if (config.precision == InferencePrecision::Fp16)
+                builderConfig->setFlag(nvinfer1::BuilderFlag::kFP16);
+
+            TrtPtr<nvinfer1::IHostMemory> plan{
+                builder->buildSerializedNetwork(*network, *builderConfig)};
+            if (!plan || plan->data() == nullptr || plan->size() == 0)
+            {
+                std::string message = m_impl->logger.messages();
+                if (message.empty())
+                    message = "buildSerializedNetwork failed";
+                return fail(std::move(message));
+            }
+
+            std::string persistError;
+            if (!persistCache(cachePath, plan->data(), plan->size(), persistError))
+                return fail(std::move(persistError));
+
+            cudaEngine.reset(runtime->deserializeCudaEngine(plan->data(), plan->size()));
+            if (!cudaEngine)
+                return fail("deserializeCudaEngine failed");
+
+            std::string inspectError;
+            if (!readEngineIo(*cudaEngine, config, io, inspectError))
+                return fail(std::move(inspectError));
+        }
+
+        TrtPtr<nvinfer1::IExecutionContext> context{cudaEngine->createExecutionContext()};
         if (!context)
             return fail("createExecutionContext failed");
 
         auto inputBuffer = std::make_unique<CudaDeviceBuffer>(
-            static_cast<std::size_t>(elementCount(dimsToShape(engineInputDims))) * sizeof(float));
+            static_cast<std::size_t>(elementCount(io.inputMeta.shape)) * sizeof(float));
         if (!inputBuffer->valid())
             return fail("input CUDA buffer: " + inputBuffer->lastError());
 
         std::vector<std::unique_ptr<CudaDeviceBuffer>> outputBuffers;
-        outputBuffers.reserve(outputNames.size());
-        for (const TensorMetadata& meta : outputMeta)
+        outputBuffers.reserve(io.outputNames.size());
+        for (const TensorMetadata& meta : io.outputMeta)
         {
             const std::int64_t count = elementCount(meta.shape);
             if (count <= 0)
@@ -370,17 +586,15 @@ bool TensorRTEngine::initialize(const ModelConfig& config)
             outputBuffers.push_back(std::move(buffer));
         }
 
-        m_impl->inputName = inputTensor->getName();
-        m_impl->outputNames = std::move(outputNames);
-        m_impl->inputMeta.name = m_impl->inputName;
-        m_impl->inputMeta.shape = dimsToShape(engineInputDims);
-        m_impl->inputMeta.dtype = "float32";
-        m_impl->outputMeta = std::move(outputMeta);
+        m_impl->inputName = std::move(io.inputName);
+        m_impl->outputNames = std::move(io.outputNames);
+        m_impl->inputMeta = std::move(io.inputMeta);
+        m_impl->outputMeta = std::move(io.outputMeta);
         m_impl->stream = std::move(stream);
         m_impl->inputBuffer = std::move(inputBuffer);
         m_impl->outputBuffers = std::move(outputBuffers);
         m_impl->context = std::move(context);
-        m_impl->engine = std::move(engine);
+        m_impl->engine = std::move(cudaEngine);
         m_impl->runtime = std::move(runtime);
         m_impl->ready = true;
         m_impl->error.clear();

@@ -9,8 +9,8 @@
 
 namespace visionlab {
 
-// TensorRT 10 FP32 后端。NvInfer / CUDA 类型藏在 Impl 里，公共头不暴露。
-// T06 每次 initialize 从 ONNX 构建，不写 engine cache（T07）。
+// TensorRT 10 后端。NvInfer / CUDA 类型藏在 Impl 里，公共头不暴露。
+// FP32 / FP16（需 platformHasFastFp16）；序列化引擎写入 ONNX 旁 .trt-cache/。
 class TensorRTEngine final : public IInferenceEngine
 {
 public:

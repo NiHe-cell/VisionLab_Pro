@@ -63,7 +63,7 @@ private slots:
     void backendIdAndDeviceAreGpu();
     void missingModelReportsPath();
     void rejectsNonTensorRtBackend();
-    void rejectsFp16UntilT07();
+    void rejectsFp16WithoutHardwareSupport();
     void rejectsDynamicShape();
     void factoryReturnsTensorRtEngine();
     void identityModelRoundTripIfGpuAvailable();
@@ -103,19 +103,30 @@ void TensorRTEngineTest::rejectsNonTensorRtBackend()
             || error.contains(QStringLiteral("tensorrt")));
 }
 
-void TensorRTEngineTest::rejectsFp16UntilT07()
+void TensorRTEngineTest::rejectsFp16WithoutHardwareSupport()
 {
+    const auto path = identityModelPath();
+    if (!std::filesystem::exists(path))
+        QSKIP("identity ONNX fixture is not present");
+    if (!cudaDeviceAvailable())
+        QSKIP("no CUDA device");
+
     ModelConfig config = identityConfig();
     config.precision = InferencePrecision::Fp16;
 
     TensorRTEngine engine;
-    QVERIFY(!engine.initialize(config));
-    QVERIFY(!engine.isReady());
-    const QString error = QString::fromStdString(engine.lastError());
-    QVERIFY(error.contains(QStringLiteral("FP16"), Qt::CaseInsensitive)
-            || error.contains(QStringLiteral("Fp16")));
-    QVERIFY(error.contains(QStringLiteral("T07"))
-            || error.contains(QStringLiteral("not enabled"), Qt::CaseInsensitive));
+    const bool ok = engine.initialize(config);
+    if (!ok)
+    {
+        QVERIFY(!engine.isReady());
+        const QString error = QString::fromStdString(engine.lastError());
+        QVERIFY(error.contains(QStringLiteral("Fp16"), Qt::CaseInsensitive)
+                || error.contains(QStringLiteral("FP16")));
+        QVERIFY(error.contains(QStringLiteral("not supported"), Qt::CaseInsensitive));
+        return;
+    }
+
+    QVERIFY(engine.isReady());
 }
 
 void TensorRTEngineTest::rejectsDynamicShape()
