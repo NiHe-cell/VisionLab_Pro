@@ -118,6 +118,14 @@ add_executable(tst_dummydetector DummyDetectorTest.cpp)
 target_link_libraries(tst_dummydetector PRIVATE visionlab_detectors Qt6::Core Qt6::Test)
 add_test(NAME dummydetector COMMAND tst_dummydetector)
 
+add_executable(tst_dummyplugin DummyPluginTest.cpp)
+target_link_libraries(tst_dummyplugin PRIVATE visionlab_plugin Qt6::Core Qt6::Test)
+target_compile_definitions(tst_dummyplugin PRIVATE
+    VISIONLAB_DUMMY_PLUGIN="$<TARGET_FILE:vision_dummy>")
+add_dependencies(tst_dummyplugin vision_dummy)
+add_test(NAME dummyplugin COMMAND tst_dummyplugin)
+visionlab_copy_ort_dlls(tst_dummyplugin)
+
 add_executable(tst_ivideosource IVideoSourceTest.cpp)
 target_link_libraries(tst_ivideosource PRIVATE visionlab_core Qt6::Core Qt6::Test)
 target_include_directories(tst_ivideosource PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
@@ -295,7 +303,7 @@ if(WIN32)
     get_filename_component(VISIONLAB_OPENCV_BIN "${OpenCV_DIR}/../bin" ABSOLUTE)
     set(visionlab_tests
         smoke framepacket modelconfig iinferenceengine onnxruntimeengine inferenceenginefactory onnxruntimecudaengine inferenceselection pluginmetadata idetector detectionrenderer
-        yolodecoding yolopreprocess yolodetector detectorfactory ssddecoding motiondetector dummydetector ivideosource
+        yolodecoding yolopreprocess yolodetector detectorfactory ssddecoding motiondetector dummydetector dummyplugin ivideosource
         camerasource modemapping boundedqueue latestresult captureworker
         inferenceworker latencywindow statsprobe visionpipeline
         pipelineoverload pipelinelifecycle cameramanager localecontroller

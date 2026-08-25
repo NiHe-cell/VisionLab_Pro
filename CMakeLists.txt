@@ -218,6 +218,29 @@ add_library(visionlab_detectors STATIC
 )
 target_link_libraries(visionlab_detectors PUBLIC visionlab_core visionlab_inference)
 
+function(visionlab_set_plugin_output target)
+    set(_dir "${CMAKE_BINARY_DIR}/plugins")
+    set_target_properties(${target} PROPERTIES
+        LIBRARY_OUTPUT_DIRECTORY "${_dir}"
+        RUNTIME_OUTPUT_DIRECTORY "${_dir}"
+    )
+    foreach(_cfg IN ITEMS DEBUG RELEASE RELWITHDEBINFO MINSIZEREL)
+        set_target_properties(${target} PROPERTIES
+            LIBRARY_OUTPUT_DIRECTORY_${_cfg} "${_dir}"
+            RUNTIME_OUTPUT_DIRECTORY_${_cfg} "${_dir}"
+        )
+    endforeach()
+endfunction()
+
+# 运行时检测器插件：MODULE，不链进 app。T03 只交付 Dummy。
+qt_add_plugin(vision_dummy
+    CLASS_NAME DummyVisionPlugin
+    ${CMAKE_CURRENT_SOURCE_DIR}/plugins/dummy/DummyVisionPlugin.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/plugins/dummy/DummyVisionPlugin.cpp
+)
+visionlab_set_plugin_output(vision_dummy)
+target_link_libraries(vision_dummy PRIVATE visionlab_detectors visionlab_plugin Qt6::Core)
+
 # 视频采集：IVideoSource 实现。不依赖 Qt / QML，不引入线程。
 add_library(visionlab_video STATIC
     video/CameraSource.h
@@ -294,6 +317,7 @@ target_link_libraries(appVisionLab PRIVATE
 set_target_properties(appVisionLab PROPERTIES
     WIN32_EXECUTABLE TRUE
 )
+add_dependencies(appVisionLab vision_dummy)
 
 # 推理基准：经 createInferenceEngine，ORT CPU / ORT CUDA / TensorRT。
 # 四次独立进程对比，勿在单进程连跑四种后端。不进默认 ctest 计时。
