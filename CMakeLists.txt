@@ -82,6 +82,8 @@ add_library(visionlab_plugin STATIC
     plugin/PluginMetadata.h
     plugin/DetectorCreateRequest.h
     plugin/IVisionPlugin.h
+    plugin/PluginManager.h
+    plugin/PluginManager.cpp
 )
 target_include_directories(visionlab_plugin PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(visionlab_plugin PUBLIC visionlab_core Qt6::Core)
