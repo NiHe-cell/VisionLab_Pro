@@ -211,6 +211,8 @@ add_library(visionlab_detectors STATIC
     detectors/FaceDetector.cpp
     detectors/MotionDetector.h
     detectors/MotionDetector.cpp
+    detectors/DummyDetector.h
+    detectors/DummyDetector.cpp
     detectors/DetectorFactory.h
     detectors/DetectorFactory.cpp
 )
