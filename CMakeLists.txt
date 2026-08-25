@@ -77,6 +77,16 @@ target_include_directories(visionlab_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(visionlab_core PUBLIC ${OpenCV_LIBS})
 set_target_properties(visionlab_core PROPERTIES LINKER_LANGUAGE CXX)
 
+# 检测器插件契约：Qt Core 仅出现在 plugin/ 层，core 仍然不链接 Qt。
+add_library(visionlab_plugin STATIC
+    plugin/PluginMetadata.h
+    plugin/DetectorCreateRequest.h
+    plugin/IVisionPlugin.h
+)
+target_include_directories(visionlab_plugin PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(visionlab_plugin PUBLIC visionlab_core Qt6::Core)
+set_target_properties(visionlab_plugin PROPERTIES LINKER_LANGUAGE CXX)
+
 # TensorRT 10 + CUDA RAII：默认关闭，CPU 构建不需要 NVIDIA 工具链。
 # 打开后必须同时找到 CUDA Toolkit 与 TensorRT 10，找不到就 configure 失败。
 option(VISIONLAB_ENABLE_TENSORRT
