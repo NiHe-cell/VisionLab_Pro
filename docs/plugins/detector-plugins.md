@@ -44,6 +44,9 @@ YOLO plugins must not `new` an ORT session or TensorRT engine directly.
 
 - Environment: `VISIONLAB_PLUGIN_DIR`. If unset or empty, scan
   `<applicationDir>/plugins`.
+- The host `POST_BUILD`-copies `vision_dummy`, `vision_motion`,
+  `vision_face`, and `vision_yolo` into
+  `$<TARGET_FILE_DIR:appVisionLab>/plugins`.
 - Scan is **not recursive**.
 - Only native libraries are considered (`*.dll` / `*.so` / `*.dylib`).
   `.pdb` / `.lib` / other sidecar files are ignored, not errors.
@@ -57,8 +60,9 @@ YOLO plugins must not `new` an ORT session or TensorRT engine directly.
 - `PluginManager` owns every `QPluginLoader` until its destructor.
 - V1 has no `unload()`. Plugins stay loaded until process exit.
 - Every `IDetector` created by a plugin must be destroyed **before**
-  `PluginManager`. `CameraManager` must declare `PluginManager` as a
-  member **before** `VisionPipeline` so destructors run in that order.
+  `PluginManager`. `CameraManager` declares `PluginManager m_plugins`
+  **before** `m_pipeline` so destructors run in that order. V1 does
+  not unload plugins while detectors exist.
 - `scan` / `createDetector` are not thread-safe. Call them on the GUI
   thread before `VisionPipeline::start()`. Do not scan while inference
   is running.
@@ -84,7 +88,28 @@ instances.
   append to `errors()`, do not abort.
 - Unknown id or `createDetector` returning `nullptr`: return `nullptr`
   and append to `errors()`. The application must keep running.
-- Do not fall back to `DetectorFactory` after T08 removes it.
+- There is no `DetectorFactory`. Missing Face / Object / Motion plugins
+  produce a `qWarning` and that mode is omitted from the detector map.
+  `VisionPipeline` already treats a missing mode as no detections.
+
+## Production assembly
+
+`CameraManager` is the only production assembler:
+
+- Scan once on the GUI thread before `start()`.
+- Match plugins by `metadata.mode` for Face / Object / Motion.
+- Dummy (`mode == nullopt`) is never inserted into the map.
+- Write `inferenceSelectionFromEnv()` into `DetectorCreateRequest`.
+  Model files remain under `applicationDirPath()/VisionLab/models`.
+- Log loaded plugin ids with `qInfo` at startup.
+- Application sources must not include `FaceDetector.h`,
+  `YoloDetector.h`, `MotionDetector.h`, `DummyDetector.h`, or
+  `DetectorFactory.h`.
+- `appVisionLab` links `visionlab_plugin` (and `visionlab_inference`
+  for env parsing), not `visionlab_detectors`.
+
+Inference backends stay behind `IInferenceEngine` / `createInferenceEngine`.
+They are not plugin types.
 
 ## Unchanged code (Phase 5 remainder)
 

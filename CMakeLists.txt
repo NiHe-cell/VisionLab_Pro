@@ -215,8 +215,6 @@ add_library(visionlab_detectors STATIC
     detectors/MotionDetector.cpp
     detectors/DummyDetector.h
     detectors/DummyDetector.cpp
-    detectors/DetectorFactory.h
-    detectors/DetectorFactory.cpp
 )
 target_link_libraries(visionlab_detectors PUBLIC visionlab_core visionlab_inference)
 
@@ -234,7 +232,7 @@ function(visionlab_set_plugin_output target)
     endforeach()
 endfunction()
 
-# 运行时检测器插件：MODULE，不链进 app。T03 只交付 Dummy。
+# 运行时检测器插件：MODULE，不链进 app。由 PluginManager 扫描加载。
 qt_add_plugin(vision_dummy
     CLASS_NAME DummyVisionPlugin
     ${CMAKE_CURRENT_SOURCE_DIR}/plugins/dummy/DummyVisionPlugin.h
@@ -330,7 +328,8 @@ qt_add_qml_module(appVisionLab
 target_link_libraries(appVisionLab PRIVATE
     visionlab_core
     visionlab_rendering
-    visionlab_detectors
+    visionlab_plugin
+    visionlab_inference
     visionlab_video
     visionlab_pipeline
     Qt6::Core
@@ -343,7 +342,17 @@ target_link_libraries(appVisionLab PRIVATE
 set_target_properties(appVisionLab PROPERTIES
     WIN32_EXECUTABLE TRUE
 )
-add_dependencies(appVisionLab vision_dummy)
+add_dependencies(appVisionLab vision_dummy vision_motion vision_face vision_yolo)
+add_custom_command(TARGET appVisionLab POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory
+        "$<TARGET_FILE_DIR:appVisionLab>/plugins"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "$<TARGET_FILE:vision_dummy>"
+        "$<TARGET_FILE:vision_motion>"
+        "$<TARGET_FILE:vision_face>"
+        "$<TARGET_FILE:vision_yolo>"
+        "$<TARGET_FILE_DIR:appVisionLab>/plugins"
+)
 
 # 推理基准：经 createInferenceEngine，ORT CPU / ORT CUDA / TensorRT。
 # 四次独立进程对比，勿在单进程连跑四种后端。不进默认 ctest 计时。

@@ -1,16 +1,20 @@
 #include "CameraManager.h"
 
+#include <filesystem>
 #include <map>
+#include <string>
+#include <utility>
 
 #include <QCoreApplication>
 #include <QDebug>
 #include <QDir>
 #include <QMetaObject>
 #include <QMutexLocker>
+#include <QStringList>
 
-#include "detectors/DetectorFactory.h"
 #include "inference/InferenceEngineFactory.h"
 #include "inference/InferenceSelection.h"
+#include "plugin/DetectorCreateRequest.h"
 #include "video/CameraSource.h"
 
 namespace {
@@ -19,6 +23,16 @@ std::string modelDirPath()
 {
     return QDir(QCoreApplication::applicationDirPath())
         .filePath(QStringLiteral("VisionLab/models"))
+        .toStdString();
+}
+
+std::filesystem::path pluginDirPath()
+{
+    const QByteArray env = qgetenv("VISIONLAB_PLUGIN_DIR");
+    if (!env.isEmpty())
+        return QString::fromUtf8(env).toStdString();
+    return QDir(QCoreApplication::applicationDirPath())
+        .filePath(QStringLiteral("plugins"))
         .toStdString();
 }
 
@@ -53,34 +67,23 @@ void warnInvalidInferenceEnv()
     }
 }
 
-std::unique_ptr<visionlab::VisionPipeline> makeProductionPipeline()
+QString modeLabel(visionlab::DetectionMode mode)
 {
-    warnInvalidInferenceEnv();
-    const visionlab::InferenceSelection selection = visionlab::inferenceSelectionFromEnv();
-
-    std::map<visionlab::DetectionMode, std::unique_ptr<visionlab::IDetector>> detectors;
-    const std::string modelDir = modelDirPath();
-    for (const visionlab::DetectionMode mode :
-         {visionlab::DetectionMode::Face,
-          visionlab::DetectionMode::Object,
-          visionlab::DetectionMode::Motion})
-    {
-        detectors.emplace(mode,
-                          visionlab::createDetector(mode,
-                                                    modelDir,
-                                                    selection.backend,
-                                                    selection.precision,
-                                                    selection.deviceId));
-    }
-    return std::make_unique<visionlab::VisionPipeline>(
-        std::make_unique<visionlab::CameraSource>(0), std::move(detectors));
+    const auto label = visionlab::labelForDetectionMode(mode);
+    return QString::fromUtf8(label.data(), static_cast<int>(label.size()));
 }
 
 } // namespace
 
 CameraManager::CameraManager()
-    : CameraManager(makeProductionPipeline())
+    : CameraManager(std::make_unique<visionlab::CameraSource>(0))
 {
+}
+
+CameraManager::CameraManager(std::unique_ptr<visionlab::IVideoSource> source)
+{
+    assembleFromPlugins(std::move(source));
+    bindPresentedCallback();
 }
 
 CameraManager::CameraManager(std::unique_ptr<visionlab::VisionPipeline> pipeline)
@@ -95,6 +98,61 @@ CameraManager::~CameraManager()
 {
     if (m_pipeline)
         m_pipeline->stop();
+}
+
+void CameraManager::assembleFromPlugins(std::unique_ptr<visionlab::IVideoSource> source)
+{
+    warnInvalidInferenceEnv();
+    const visionlab::InferenceSelection selection = visionlab::inferenceSelectionFromEnv();
+
+    m_plugins.scan(pluginDirPath());
+
+    QStringList ids;
+    for (const auto& meta : m_plugins.metadata())
+        ids << QString::fromStdString(meta.id);
+    qInfo() << "CameraManager: loaded plugins" << ids;
+
+    visionlab::DetectorCreateRequest request;
+    request.modelDir = modelDirPath();
+    request.backend = selection.backend;
+    request.precision = selection.precision;
+    request.deviceId = selection.deviceId;
+
+    std::map<visionlab::DetectionMode, std::unique_ptr<visionlab::IDetector>> detectors;
+    const auto plugins = m_plugins.metadata();
+    for (const visionlab::DetectionMode mode :
+         {visionlab::DetectionMode::Face,
+          visionlab::DetectionMode::Object,
+          visionlab::DetectionMode::Motion})
+    {
+        const visionlab::PluginMetadata* match = nullptr;
+        for (const auto& meta : plugins)
+        {
+            if (meta.mode.has_value() && *meta.mode == mode)
+            {
+                match = &meta;
+                break;
+            }
+        }
+        if (!match)
+        {
+            qWarning() << "CameraManager: no plugin for" << modeLabel(mode);
+            continue;
+        }
+
+        auto detector = m_plugins.createDetector(match->id, request);
+        if (!detector)
+        {
+            qWarning() << "CameraManager: createDetector failed for"
+                       << QString::fromStdString(match->id);
+            continue;
+        }
+        detectors.emplace(mode, std::move(detector));
+    }
+
+    m_pipeline = std::make_unique<visionlab::VisionPipeline>(std::move(source),
+                                                             std::move(detectors));
+    m_pipeline->setMode(visionlab::DetectionMode::Face);
 }
 
 void CameraManager::bindPresentedCallback()

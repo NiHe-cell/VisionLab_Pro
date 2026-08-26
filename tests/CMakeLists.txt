@@ -90,22 +90,6 @@ target_link_libraries(tst_yolodetector PRIVATE visionlab_detectors Qt6::Core Qt6
 target_include_directories(tst_yolodetector PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 add_test(NAME yolodetector COMMAND tst_yolodetector)
 
-add_executable(tst_detectorfactory DetectorFactoryTest.cpp)
-target_link_libraries(tst_detectorfactory PRIVATE visionlab_detectors Qt6::Core Qt6::Test)
-target_compile_definitions(tst_detectorfactory PRIVATE
-    VISIONLAB_TEST_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/fixtures")
-add_test(NAME detectorfactory COMMAND tst_detectorfactory)
-add_custom_command(TARGET tst_detectorfactory POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "$<TARGET_FILE:OnnxRuntime::OnnxRuntime>"
-        "$<TARGET_FILE_DIR:tst_detectorfactory>")
-if(EXISTS "${ONNXRUNTIME_BIN_DIR}/onnxruntime_providers_shared.dll")
-    add_custom_command(TARGET tst_detectorfactory POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "${ONNXRUNTIME_BIN_DIR}/onnxruntime_providers_shared.dll"
-            "$<TARGET_FILE_DIR:tst_detectorfactory>")
-endif()
-
 add_executable(tst_ssddecoding SsdDecodingTest.cpp)
 target_link_libraries(tst_ssddecoding PRIVATE visionlab_detectors Qt6::Core Qt6::Test)
 add_test(NAME ssddecoding COMMAND tst_ssddecoding)
@@ -236,13 +220,18 @@ add_executable(tst_cameramanager
     ${CMAKE_SOURCE_DIR}/utilities/CameraManager.h)
 target_link_libraries(tst_cameramanager PRIVATE
     visionlab_pipeline
-    visionlab_detectors
+    visionlab_plugin
+    visionlab_inference
     visionlab_video
     Qt6::Core
     Qt6::Gui
     Qt6::Test)
 target_include_directories(tst_cameramanager PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_SOURCE_DIR})
+target_compile_definitions(tst_cameramanager PRIVATE
+    VISIONLAB_BUILD_PLUGINS_DIR="${CMAKE_BINARY_DIR}/plugins")
+add_dependencies(tst_cameramanager vision_dummy vision_motion vision_face vision_yolo)
 add_test(NAME cameramanager COMMAND tst_cameramanager)
+visionlab_copy_ort_dlls(tst_cameramanager)
 
 add_executable(tst_localecontroller
     LocaleControllerTest.cpp
@@ -353,7 +342,7 @@ if(WIN32)
     get_filename_component(VISIONLAB_OPENCV_BIN "${OpenCV_DIR}/../bin" ABSOLUTE)
     set(visionlab_tests
         smoke framepacket modelconfig iinferenceengine onnxruntimeengine inferenceenginefactory onnxruntimecudaengine inferenceselection pluginmetadata idetector detectionrenderer
-        yolodecoding yolopreprocess yolodetector detectorfactory ssddecoding motiondetector dummydetector dummyplugin motionplugin faceplugin yoloplugin pluginmanager ivideosource
+        yolodecoding yolopreprocess yolodetector ssddecoding motiondetector dummydetector dummyplugin motionplugin faceplugin yoloplugin pluginmanager ivideosource
         camerasource modemapping boundedqueue latestresult captureworker
         inferenceworker latencywindow statsprobe visionpipeline
         pipelineoverload pipelinelifecycle cameramanager localecontroller
