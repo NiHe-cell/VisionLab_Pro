@@ -251,6 +251,14 @@ qt_add_plugin(vision_motion
 visionlab_set_plugin_output(vision_motion)
 target_link_libraries(vision_motion PRIVATE visionlab_detectors visionlab_plugin Qt6::Core)
 
+qt_add_plugin(vision_face
+    CLASS_NAME FaceVisionPlugin
+    ${CMAKE_CURRENT_SOURCE_DIR}/plugins/face/FaceVisionPlugin.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/plugins/face/FaceVisionPlugin.cpp
+)
+visionlab_set_plugin_output(vision_face)
+target_link_libraries(vision_face PRIVATE visionlab_detectors visionlab_plugin Qt6::Core)
+
 # 视频采集：IVideoSource 实现。不依赖 Qt / QML，不引入线程。
 add_library(visionlab_video STATIC
     video/CameraSource.h
