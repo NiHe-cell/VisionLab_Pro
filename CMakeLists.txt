@@ -259,6 +259,14 @@ qt_add_plugin(vision_face
 visionlab_set_plugin_output(vision_face)
 target_link_libraries(vision_face PRIVATE visionlab_detectors visionlab_plugin Qt6::Core)
 
+qt_add_plugin(vision_yolo
+    CLASS_NAME YoloVisionPlugin
+    ${CMAKE_CURRENT_SOURCE_DIR}/plugins/yolo/YoloVisionPlugin.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/plugins/yolo/YoloVisionPlugin.cpp
+)
+visionlab_set_plugin_output(vision_yolo)
+target_link_libraries(vision_yolo PRIVATE visionlab_detectors visionlab_plugin Qt6::Core)
+
 # 视频采集：IVideoSource 实现。不依赖 Qt / QML，不引入线程。
 add_library(visionlab_video STATIC
     video/CameraSource.h

@@ -143,6 +143,15 @@ add_dependencies(tst_faceplugin vision_face)
 add_test(NAME faceplugin COMMAND tst_faceplugin)
 visionlab_copy_ort_dlls(tst_faceplugin)
 
+add_executable(tst_yoloplugin YoloPluginTest.cpp)
+target_link_libraries(tst_yoloplugin PRIVATE visionlab_plugin Qt6::Core Qt6::Test)
+target_compile_definitions(tst_yoloplugin PRIVATE
+    VISIONLAB_YOLO_PLUGIN="$<TARGET_FILE:vision_yolo>"
+    VISIONLAB_TEST_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/fixtures")
+add_dependencies(tst_yoloplugin vision_yolo)
+add_test(NAME yoloplugin COMMAND tst_yoloplugin)
+visionlab_copy_ort_dlls(tst_yoloplugin)
+
 qt_add_plugin(vision_fail_create
     CLASS_NAME FailCreatePlugin
     ${CMAKE_CURRENT_SOURCE_DIR}/plugins/fail_create/FailCreatePlugin.h
@@ -344,7 +353,7 @@ if(WIN32)
     get_filename_component(VISIONLAB_OPENCV_BIN "${OpenCV_DIR}/../bin" ABSOLUTE)
     set(visionlab_tests
         smoke framepacket modelconfig iinferenceengine onnxruntimeengine inferenceenginefactory onnxruntimecudaengine inferenceselection pluginmetadata idetector detectionrenderer
-        yolodecoding yolopreprocess yolodetector detectorfactory ssddecoding motiondetector dummydetector dummyplugin motionplugin faceplugin pluginmanager ivideosource
+        yolodecoding yolopreprocess yolodetector detectorfactory ssddecoding motiondetector dummydetector dummyplugin motionplugin faceplugin yoloplugin pluginmanager ivideosource
         camerasource modemapping boundedqueue latestresult captureworker
         inferenceworker latencywindow statsprobe visionpipeline
         pipelineoverload pipelinelifecycle cameramanager localecontroller
