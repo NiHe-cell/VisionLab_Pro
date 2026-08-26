@@ -126,6 +126,14 @@ add_dependencies(tst_dummyplugin vision_dummy)
 add_test(NAME dummyplugin COMMAND tst_dummyplugin)
 visionlab_copy_ort_dlls(tst_dummyplugin)
 
+add_executable(tst_motionplugin MotionPluginTest.cpp)
+target_link_libraries(tst_motionplugin PRIVATE visionlab_plugin Qt6::Core Qt6::Test)
+target_compile_definitions(tst_motionplugin PRIVATE
+    VISIONLAB_MOTION_PLUGIN="$<TARGET_FILE:vision_motion>")
+add_dependencies(tst_motionplugin vision_motion)
+add_test(NAME motionplugin COMMAND tst_motionplugin)
+visionlab_copy_ort_dlls(tst_motionplugin)
+
 qt_add_plugin(vision_fail_create
     CLASS_NAME FailCreatePlugin
     ${CMAKE_CURRENT_SOURCE_DIR}/plugins/fail_create/FailCreatePlugin.h
@@ -327,7 +335,7 @@ if(WIN32)
     get_filename_component(VISIONLAB_OPENCV_BIN "${OpenCV_DIR}/../bin" ABSOLUTE)
     set(visionlab_tests
         smoke framepacket modelconfig iinferenceengine onnxruntimeengine inferenceenginefactory onnxruntimecudaengine inferenceselection pluginmetadata idetector detectionrenderer
-        yolodecoding yolopreprocess yolodetector detectorfactory ssddecoding motiondetector dummydetector dummyplugin pluginmanager ivideosource
+        yolodecoding yolopreprocess yolodetector detectorfactory ssddecoding motiondetector dummydetector dummyplugin motionplugin pluginmanager ivideosource
         camerasource modemapping boundedqueue latestresult captureworker
         inferenceworker latencywindow statsprobe visionpipeline
         pipelineoverload pipelinelifecycle cameramanager localecontroller
