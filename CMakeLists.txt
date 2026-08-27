@@ -207,10 +207,12 @@ if(VISIONLAB_ENABLE_TENSORRT)
     endif()
 endif()
 
-# 渲染层：Detection 标注的唯一写入方。不依赖 Qt / QML。
+# 渲染层：Detection / Track 标注的写入方。不依赖 Qt / QML。
 add_library(visionlab_rendering STATIC
     rendering/DetectionRenderer.h
     rendering/DetectionRenderer.cpp
+    rendering/TrackRenderer.h
+    rendering/TrackRenderer.cpp
 )
 target_link_libraries(visionlab_rendering PUBLIC visionlab_core)
 

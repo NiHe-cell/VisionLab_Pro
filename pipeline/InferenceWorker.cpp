@@ -83,7 +83,10 @@ void InferenceWorker::run(std::stop_token stop)
             if (!packet.image.empty())
             {
                 cv::Mat annotated = packet.image.clone();
-                m_renderer.render(annotated, presented.detections);
+                if (!presented.tracks.empty())
+                    m_trackRenderer.render(annotated, presented.tracks);
+                else
+                    m_renderer.render(annotated, presented.detections);
                 cv::Mat rgb;
                 cv::cvtColor(annotated, rgb, cv::COLOR_BGR2RGB);
                 if (!rgb.isContinuous())

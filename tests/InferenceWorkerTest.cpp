@@ -202,6 +202,11 @@ void InferenceWorkerTest::publishesTracksWhenTrackerInjected()
     QCOMPARE(view->tracks.front().label, view->detections.front().label);
     QCOMPARE(view->tracks.front().trackId, std::uint64_t{1});
     QCOMPARE(view->tracks.front().box, view->detections.front().box);
+    QCOMPARE(view->rgb.cols, 20);
+    QCOMPARE(view->rgb.rows, 16);
+    QCOMPARE(view->rgb.type(), CV_8UC3);
+    QVERIFY(view->rgb.isContinuous());
+    QVERIFY(cv::countNonZero(view->rgb.reshape(1)) > 0);
 }
 
 void InferenceWorkerTest::emptyDetectionsYieldEmptyTracks()

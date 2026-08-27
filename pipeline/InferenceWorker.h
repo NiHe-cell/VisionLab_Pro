@@ -13,12 +13,14 @@
 #include "detectors/IDetector.h"
 #include "pipeline/StatsProbe.h"
 #include "rendering/DetectionRenderer.h"
+#include "rendering/TrackRenderer.h"
 #include "tracking/ITracker.h"
 
 namespace visionlab {
 
 // 推理工作线程体：从有界队列取帧、调用 IDetector、可选 ITracker，同线程绘制并发布。
-// 不拥有 jthread。检测器与模式由获取器注入。跟踪在 detect 之后、render 之前，不另开线程。
+// 不拥有 jthread。检测器与模式由获取器注入。跟踪在本线程、detect 与 render 之间。
+// 有 tracks 时用 TrackRenderer，否则回退 DetectionRenderer。
 class InferenceWorker
 {
 public:
@@ -43,6 +45,7 @@ private:
     StatsProbe& m_stats;
     std::function<void()> m_onPresented;
     DetectionRenderer m_renderer;
+    TrackRenderer m_trackRenderer;
     ITracker* m_tracker;
     ModeProvider m_mode;
     std::optional<DetectionMode> m_lastMode;
