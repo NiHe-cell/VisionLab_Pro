@@ -11,8 +11,10 @@
 #include "fakes/FakeDetector.h"
 #include "fakes/FakeVideoSource.h"
 #include "pipeline/VisionPipeline.h"
+#include "tracking/ByteTrackTracker.h"
 #include "utilities/CameraManager.h"
 
+using visionlab::ByteTrackTracker;
 using visionlab::DetectionMode;
 using visionlab::IDetector;
 using visionlab::VisionPipeline;
@@ -28,7 +30,9 @@ std::map<DetectionMode, std::unique_ptr<IDetector>> makeFaceDetector()
 
 std::unique_ptr<VisionPipeline> makePipeline(std::unique_ptr<FakeVideoSource> source)
 {
-    return std::make_unique<VisionPipeline>(std::move(source), makeFaceDetector());
+    return std::make_unique<VisionPipeline>(
+        std::move(source), makeFaceDetector(), VisionPipeline::kDefaultQueueCapacity,
+        std::make_unique<ByteTrackTracker>());
 }
 
 bool copyNativePlugin(const QDir& src, const QDir& dst, const QString& stem)
@@ -99,6 +103,7 @@ void CameraManagerTest::startPublishesFrameThenStopClears()
     QVERIFY(!manager.frame().isNull());
     QCOMPARE(manager.frame().format(), QImage::Format_RGB888);
     QVERIFY(manager.statsSnapshot().capturedFrames > 0);
+    QTRY_VERIFY_WITH_TIMEOUT(manager.statsSnapshot().activeTracks > 0, 2000);
 
     QVERIFY(manager.stop());
     QCOMPARE(cleared.count(), 1);

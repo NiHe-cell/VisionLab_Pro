@@ -15,6 +15,7 @@
 #include "inference/InferenceEngineFactory.h"
 #include "inference/InferenceSelection.h"
 #include "plugin/DetectorCreateRequest.h"
+#include "tracking/ByteTrackTracker.h"
 #include "video/CameraSource.h"
 
 namespace {
@@ -150,8 +151,10 @@ void CameraManager::assembleFromPlugins(std::unique_ptr<visionlab::IVideoSource>
         detectors.emplace(mode, std::move(detector));
     }
 
-    m_pipeline = std::make_unique<visionlab::VisionPipeline>(std::move(source),
-                                                             std::move(detectors));
+    m_pipeline = std::make_unique<visionlab::VisionPipeline>(
+        std::move(source), std::move(detectors),
+        visionlab::VisionPipeline::kDefaultQueueCapacity,
+        std::make_unique<visionlab::ByteTrackTracker>());
     m_pipeline->setMode(visionlab::DetectionMode::Face);
 }
 

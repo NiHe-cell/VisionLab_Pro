@@ -12,7 +12,9 @@
 #include "fakes/SlowDetector.h"
 #include "fakes/ThrowingDetector.h"
 #include "pipeline/VisionPipeline.h"
+#include "tracking/ByteTrackTracker.h"
 
+using visionlab::ByteTrackTracker;
 using visionlab::DetectionMode;
 using visionlab::IDetector;
 using visionlab::VisionPipeline;
@@ -52,6 +54,7 @@ private slots:
     void startAfterStop();
     void sourceCloseThenStopJoins();
     void detectExceptionDoesNotAbort();
+    void startStopStartWithByteTrack();
 };
 
 void PipelineLifecycleTest::stopJoinsWhileDetectSleeps()
@@ -120,6 +123,31 @@ void PipelineLifecycleTest::detectExceptionDoesNotAbort()
     QVERIFY(waitUntil([&] { return pipeline.latest().has_value(); }));
     QVERIFY(pipeline.stats().processedFrames >= 1);
 
+    pipeline.stop();
+    QVERIFY(!pipeline.isRunning());
+}
+
+void PipelineLifecycleTest::startStopStartWithByteTrack()
+{
+    auto source = std::make_unique<FakeVideoSource>(64, "fake:life-bt", true, true);
+    VisionPipeline pipeline(std::move(source), makeFaceDetector(),
+                            VisionPipeline::kDefaultQueueCapacity,
+                            std::make_unique<ByteTrackTracker>());
+    pipeline.setMode(DetectionMode::Face);
+
+    QVERIFY(pipeline.start());
+    QVERIFY(waitUntil([&] {
+        const auto frame = pipeline.latest();
+        return frame && !frame->tracks.empty();
+    }));
+    pipeline.stop();
+    QVERIFY(!pipeline.isRunning());
+
+    QVERIFY(pipeline.start());
+    QVERIFY(waitUntil([&] {
+        const auto frame = pipeline.latest();
+        return frame && !frame->tracks.empty() && frame->tracks.front().trackId == 1;
+    }));
     pipeline.stop();
     QVERIFY(!pipeline.isRunning());
 }

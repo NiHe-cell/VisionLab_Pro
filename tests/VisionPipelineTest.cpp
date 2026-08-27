@@ -11,8 +11,10 @@
 #include "fakes/FakeTracker.h"
 #include "fakes/FakeVideoSource.h"
 #include "pipeline/VisionPipeline.h"
+#include "tracking/ByteTrackTracker.h"
 #include "tracking/ITracker.h"
 
+using visionlab::ByteTrackTracker;
 using visionlab::DetectionMode;
 using visionlab::IDetector;
 using visionlab::ITracker;
@@ -70,6 +72,9 @@ private slots:
     void setModeSwitchesDetector();
     void fakeTrackerFillsLatestTracks();
     void setModeResetsTracker();
+    void byteTrackConfirmsStableId();
+    void byteTrackRestartAllocatesIdFromOne();
+    void byteTrackModeChangeRestartsIds();
 };
 
 void VisionPipelineTest::startProducesLatestThenStopJoins()
@@ -172,6 +177,75 @@ void VisionPipelineTest::setModeResetsTracker()
 
     pipeline.setMode(DetectionMode::Object);
     QVERIFY(waitUntil([&] { return trackerPtr->resetCount() >= 1; }));
+    QVERIFY(waitUntil([&] {
+        const auto frame = pipeline.latest();
+        return frame && !frame->tracks.empty()
+               && frame->detections.front().label == "object"
+               && frame->tracks.front().trackId == 1;
+    }));
+    pipeline.stop();
+}
+
+void VisionPipelineTest::byteTrackConfirmsStableId()
+{
+    auto source = std::make_unique<FakeVideoSource>(64, "fake:bt-stable", true, true);
+    VisionPipeline pipeline(std::move(source), makeDetectors(),
+                            VisionPipeline::kDefaultQueueCapacity,
+                            std::make_unique<ByteTrackTracker>());
+    pipeline.setMode(DetectionMode::Face);
+    QVERIFY(pipeline.start());
+    QVERIFY(waitUntil([&] {
+        const auto frame = pipeline.latest();
+        return frame && frame->tracks.size() == 1;
+    }));
+    const std::uint64_t id = pipeline.latest()->tracks.front().trackId;
+    QCOMPARE(id, std::uint64_t{1});
+    const std::int64_t seen = pipeline.latest()->frameId;
+    QVERIFY(waitUntil([&] {
+        const auto frame = pipeline.latest();
+        return frame && frame->frameId != seen && frame->tracks.size() == 1
+               && frame->tracks.front().trackId == id;
+    }));
+    pipeline.stop();
+}
+
+void VisionPipelineTest::byteTrackRestartAllocatesIdFromOne()
+{
+    auto source = std::make_unique<FakeVideoSource>(64, "fake:bt-restart", true, true);
+    VisionPipeline pipeline(std::move(source), makeDetectors(),
+                            VisionPipeline::kDefaultQueueCapacity,
+                            std::make_unique<ByteTrackTracker>());
+    pipeline.setMode(DetectionMode::Face);
+    QVERIFY(pipeline.start());
+    QVERIFY(waitUntil([&] {
+        const auto frame = pipeline.latest();
+        return frame && !frame->tracks.empty();
+    }));
+    pipeline.stop();
+
+    QVERIFY(pipeline.start());
+    QVERIFY(waitUntil([&] {
+        const auto frame = pipeline.latest();
+        return frame && !frame->tracks.empty() && frame->tracks.front().trackId == 1;
+    }));
+    pipeline.stop();
+}
+
+void VisionPipelineTest::byteTrackModeChangeRestartsIds()
+{
+    auto source = std::make_unique<FakeVideoSource>(64, "fake:bt-mode", true, true);
+    VisionPipeline pipeline(std::move(source), makeDetectors(),
+                            VisionPipeline::kDefaultQueueCapacity,
+                            std::make_unique<ByteTrackTracker>());
+    pipeline.setMode(DetectionMode::Face);
+    QVERIFY(pipeline.start());
+    QVERIFY(waitUntil([&] {
+        const auto frame = pipeline.latest();
+        return frame && !frame->tracks.empty()
+               && frame->detections.front().label == "face";
+    }));
+
+    pipeline.setMode(DetectionMode::Object);
     QVERIFY(waitUntil([&] {
         const auto frame = pipeline.latest();
         return frame && !frame->tracks.empty()

@@ -15,6 +15,7 @@
 
 // GUI 边界上的相机编排器：拥有 PluginManager 与 VisionPipeline，
 // 把 PresentedFrame 深拷贝为 QImage。
+// VisionPipeline 拥有 ITracker（生产路径为 ByteTrackTracker）。
 // QObject 只活在 GUI 线程；采集与推理在 pipeline 的 jthread 上。
 // frame() 加锁，供场景图线程上的 ImageProvider 读取。
 //

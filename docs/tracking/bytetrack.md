@@ -79,7 +79,8 @@ Each `update`:
 
 `trackId` is a `uint64_t` that increases monotonically and is never
 reused until `reset()`. `reset()` clears all tracks, restarts ids at 1,
-and zeros `TrackerStats`.
+and zeros `TrackerStats`. `VisionPipeline::start()` calls `reset()`
+before launching worker `jthread`s so a later start does not reuse ids.
 
 Default `TrackerConfig`:
 
@@ -95,12 +96,26 @@ Default `TrackerConfig`:
 ## Threading
 
 `update` / `reset` are not thread-safe. Only the inference thread may
-call them. GUI `setMode` must not call `reset()`; the worker resets on
-the next `update` when the detection mode changes (T05).
+call them during a running session. GUI `setMode` must not call
+`reset()`; the worker resets on the next `update` when the detection
+mode changes. `VisionPipeline::start()` may `reset()` on the caller
+thread **before** the inference `jthread` exists.
+
+## Production wiring
+
+`CameraManager::assembleFromPlugins` injects `ByteTrackTracker`.
+Tracking is always on in V1. There is no `VISIONLAB_TRACKING`
+environment switch and no QML enable property (Phase 8).
+
+Tracking is not a detector plugin capability. `IDetector` /
+`IVisionPlugin` must not mention `ITracker`. The tracker is owned by
+`VisionPipeline`, not created by plugins.
+
+Motion mode uses the same tracker; motion-region ids may be unstable.
 
 ## Known V1 limits
 
 - Greedy IoU can swap identities when two same-class boxes cross.
 - Motion-region detections may receive unstable ids.
-- Tracking is always on in production once T08 injects
-  `ByteTrackTracker`. A QML enable switch is Phase 8.
+- Configuration is compile-time `TrackerConfig` defaults. No hot
+  reload.

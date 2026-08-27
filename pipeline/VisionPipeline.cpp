@@ -28,6 +28,8 @@ bool VisionPipeline::start()
 
     m_latest.clear();
     m_stats.reset();
+    if (m_tracker)
+        m_tracker->reset();
     m_queue = std::make_unique<BoundedQueue<FramePacket>>(
         m_queueCapacity, OverflowPolicy::DropOldest);
     m_captureWorker = std::make_unique<CaptureWorker>(*m_source, *m_queue, m_stats);
