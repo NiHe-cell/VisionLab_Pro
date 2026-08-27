@@ -41,14 +41,21 @@ public:
         return tracks;
     }
 
-    void reset() override { m_stats = {}; }
+    void reset() override
+    {
+        m_stats = {};
+        ++m_resetCount;
+    }
 
     visionlab::TrackerStats stats() const override { return m_stats; }
 
     visionlab::TrackerConfig config() const override { return {}; }
 
+    int resetCount() const { return m_resetCount; }
+
 private:
     visionlab::TrackerStats m_stats;
+    int m_resetCount = 0;
 };
 
 #endif // FAKETRACKER_H

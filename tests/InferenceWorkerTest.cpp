@@ -8,12 +8,15 @@
 #include "core/FramePacket.h"
 #include "core/LatestResult.h"
 #include "core/PresentedFrame.h"
+#include "core/VisionTypes.h"
 #include "fakes/FakeDetector.h"
+#include "fakes/FakeTracker.h"
 #include "fakes/SlowDetector.h"
 #include "pipeline/InferenceWorker.h"
 #include "pipeline/StatsProbe.h"
 
 using visionlab::BoundedQueue;
+using visionlab::DetectionMode;
 using visionlab::FramePacket;
 using visionlab::InferenceWorker;
 using visionlab::LatestResult;
@@ -68,6 +71,9 @@ private slots:
     void notReadyStillPublishesEmptyDetections();
     void emptyDetectionsKeepFrameSize();
     void slowDetectCanStopAfterQueueClose();
+    void publishesTracksWhenTrackerInjected();
+    void emptyDetectionsYieldEmptyTracks();
+    void modeChangeResetsTrackerOnInferenceThread();
 };
 
 void InferenceWorkerTest::closeOnEmptyQueueExits()
@@ -101,6 +107,7 @@ void InferenceWorkerTest::publishesDetectionsAndConvertsToRgb()
     QCOMPARE(view->sourceId, std::string("fake:0"));
     QCOMPARE(view->detections.size(), std::size_t(1));
     QCOMPARE(view->detections.front().label, std::string("fake-object"));
+    QVERIFY(view->tracks.empty());
     QVERIFY(view->inferenceLatencyMs >= 0.0);
 
     QCOMPARE(view->rgb.cols, 20);
@@ -173,6 +180,73 @@ void InferenceWorkerTest::slowDetectCanStopAfterQueueClose()
     QVERIFY(waitFlag(finished, 3000));
     QVERIFY(detector.callCount() >= 1);
     QVERIFY(out.snapshot().has_value());
+}
+
+void InferenceWorkerTest::publishesTracksWhenTrackerInjected()
+{
+    BoundedQueue<FramePacket> in(4, OverflowPolicy::DropOldest);
+    LatestResult<PresentedFrame> out;
+    FakeDetector detector;
+    FakeTracker tracker;
+    StatsProbe stats;
+    InferenceWorker worker(in, out, [&] { return &detector; }, stats, {}, {}, &tracker);
+
+    QVERIFY(in.push(makeBgrPacket(7)));
+    in.close();
+    worker.run(std::stop_token{});
+
+    const std::optional<PresentedFrame> view = out.snapshot();
+    QVERIFY(view.has_value());
+    QCOMPARE(view->detections.size(), std::size_t(1));
+    QCOMPARE(view->tracks.size(), view->detections.size());
+    QCOMPARE(view->tracks.front().label, view->detections.front().label);
+    QCOMPARE(view->tracks.front().trackId, std::uint64_t{1});
+    QCOMPARE(view->tracks.front().box, view->detections.front().box);
+}
+
+void InferenceWorkerTest::emptyDetectionsYieldEmptyTracks()
+{
+    BoundedQueue<FramePacket> in(2, OverflowPolicy::DropOldest);
+    LatestResult<PresentedFrame> out;
+    SlowDetector detector{std::chrono::milliseconds(0)};
+    FakeTracker tracker;
+    StatsProbe stats;
+    InferenceWorker worker(in, out, [&] { return &detector; }, stats, {}, {}, &tracker);
+
+    QVERIFY(in.push(makeBgrPacket(1)));
+    in.close();
+    worker.run(std::stop_token{});
+
+    const std::optional<PresentedFrame> view = out.snapshot();
+    QVERIFY(view.has_value());
+    QVERIFY(view->detections.empty());
+    QVERIFY(view->tracks.empty());
+}
+
+void InferenceWorkerTest::modeChangeResetsTrackerOnInferenceThread()
+{
+    BoundedQueue<FramePacket> in(4, OverflowPolicy::DropOldest);
+    LatestResult<PresentedFrame> out;
+    FakeDetector detector;
+    FakeTracker tracker;
+    StatsProbe stats;
+    int modeCalls = 0;
+    InferenceWorker worker(
+        in, out, [&] { return &detector; }, stats, {}, {}, &tracker,
+        [&] {
+            ++modeCalls;
+            return modeCalls == 1 ? DetectionMode::Face : DetectionMode::Object;
+        });
+
+    QVERIFY(in.push(makeBgrPacket(1)));
+    QVERIFY(in.push(makeBgrPacket(2)));
+    in.close();
+    worker.run(std::stop_token{});
+
+    QCOMPARE(tracker.resetCount(), 1);
+    const std::optional<PresentedFrame> view = out.snapshot();
+    QVERIFY(view.has_value());
+    QCOMPARE(view->tracks.front().trackId, std::uint64_t{1});
 }
 
 QTEST_APPLESS_MAIN(InferenceWorkerTest)

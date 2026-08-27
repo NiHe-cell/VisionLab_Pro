@@ -12,13 +12,17 @@ InferenceWorker::InferenceWorker(BoundedQueue<FramePacket>& in,
                                  DetectorProvider detector,
                                  StatsProbe& stats,
                                  std::function<void()> onPresented,
-                                 DetectionRenderer renderer)
+                                 DetectionRenderer renderer,
+                                 ITracker* tracker,
+                                 ModeProvider mode)
     : m_in(in)
     , m_out(out)
     , m_detector(std::move(detector))
     , m_stats(stats)
     , m_onPresented(std::move(onPresented))
     , m_renderer(std::move(renderer))
+    , m_tracker(tracker)
+    , m_mode(std::move(mode))
 {
 }
 
@@ -51,7 +55,29 @@ void InferenceWorker::run(std::stop_token stop)
         presented.inferenceLatencyMs =
             std::chrono::duration<double, std::milli>(detectEnd - detectBegin).count();
 
-        // Tracking / Analytics 预留点：此处已有 packet + detections，尚未绘制。
+        if (m_tracker)
+        {
+            if (m_mode)
+            {
+                const DetectionMode current = m_mode();
+                if (m_lastMode.has_value() && *m_lastMode != current)
+                    m_tracker->reset();
+                m_lastMode = current;
+            }
+            try
+            {
+                TrackUpdateContext context;
+                context.frameId = packet.frameId;
+                context.timestamp = packet.captureTimestamp;
+                presented.tracks = m_tracker->update(presented.detections, context);
+            }
+            catch (const cv::Exception& e)
+            {
+                std::cerr << "[InferenceWorker] track 异常: " << e.what() << '\n';
+                presented.tracks.clear();
+            }
+        }
+
         try
         {
             if (!packet.image.empty())

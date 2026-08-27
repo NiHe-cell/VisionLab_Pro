@@ -4,9 +4,11 @@ namespace visionlab {
 
 VisionPipeline::VisionPipeline(std::unique_ptr<IVideoSource> source,
                                std::map<DetectionMode, std::unique_ptr<IDetector>> detectors,
-                               std::size_t queueCapacity)
+                               std::size_t queueCapacity,
+                               std::unique_ptr<ITracker> tracker)
     : m_source(std::move(source))
     , m_detectors(std::move(detectors))
+    , m_tracker(std::move(tracker))
     , m_queueCapacity(queueCapacity)
 {
 }
@@ -30,7 +32,8 @@ bool VisionPipeline::start()
         m_queueCapacity, OverflowPolicy::DropOldest);
     m_captureWorker = std::make_unique<CaptureWorker>(*m_source, *m_queue, m_stats);
     m_inferenceWorker = std::make_unique<InferenceWorker>(
-        *m_queue, m_latest, [this] { return currentDetector(); }, m_stats, m_onPresented);
+        *m_queue, m_latest, [this] { return currentDetector(); }, m_stats, m_onPresented,
+        DetectionRenderer{}, m_tracker.get(), [this] { return mode(); });
 
     m_captureThread = std::jthread([this](std::stop_token stop) {
         m_captureWorker->run(stop);

@@ -8,11 +8,14 @@
 
 #include "core/VisionTypes.h"
 #include "fakes/FakeDetector.h"
+#include "fakes/FakeTracker.h"
 #include "fakes/FakeVideoSource.h"
 #include "pipeline/VisionPipeline.h"
+#include "tracking/ITracker.h"
 
 using visionlab::DetectionMode;
 using visionlab::IDetector;
+using visionlab::ITracker;
 using visionlab::IVideoSource;
 using visionlab::VisionPipeline;
 
@@ -65,6 +68,8 @@ private slots:
     void repeatedStartStop();
     void openFailureDoesNotStart();
     void setModeSwitchesDetector();
+    void fakeTrackerFillsLatestTracks();
+    void setModeResetsTracker();
 };
 
 void VisionPipelineTest::startProducesLatestThenStopJoins()
@@ -132,6 +137,48 @@ void VisionPipelineTest::setModeSwitchesDetector()
 
     pipeline.stop();
     QVERIFY(objectPtr->callCount() >= 1);
+}
+
+void VisionPipelineTest::fakeTrackerFillsLatestTracks()
+{
+    auto source = std::make_unique<FakeVideoSource>(32, "fake:track", true, true);
+    auto tracker = std::make_unique<FakeTracker>();
+    VisionPipeline pipeline(std::move(source), makeDetectors(),
+                            VisionPipeline::kDefaultQueueCapacity, std::move(tracker));
+    pipeline.setMode(DetectionMode::Face);
+
+    QVERIFY(pipeline.start());
+    QVERIFY(waitUntil([&] {
+        const auto frame = pipeline.latest();
+        return frame && !frame->tracks.empty();
+    }));
+    QCOMPARE(pipeline.latest()->tracks.front().label, std::string("face"));
+    pipeline.stop();
+}
+
+void VisionPipelineTest::setModeResetsTracker()
+{
+    auto tracker = std::make_unique<FakeTracker>();
+    FakeTracker* trackerPtr = tracker.get();
+    auto source = std::make_unique<FakeVideoSource>(32, "fake:reset", true, true);
+    VisionPipeline pipeline(std::move(source), makeDetectors(),
+                            VisionPipeline::kDefaultQueueCapacity, std::move(tracker));
+    pipeline.setMode(DetectionMode::Face);
+    QVERIFY(pipeline.start());
+    QVERIFY(waitUntil([&] {
+        const auto frame = pipeline.latest();
+        return frame && !frame->tracks.empty();
+    }));
+
+    pipeline.setMode(DetectionMode::Object);
+    QVERIFY(waitUntil([&] { return trackerPtr->resetCount() >= 1; }));
+    QVERIFY(waitUntil([&] {
+        const auto frame = pipeline.latest();
+        return frame && !frame->tracks.empty()
+               && frame->detections.front().label == "object"
+               && frame->tracks.front().trackId == 1;
+    }));
+    pipeline.stop();
 }
 
 QTEST_APPLESS_MAIN(VisionPipelineTest)

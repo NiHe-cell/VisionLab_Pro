@@ -19,13 +19,13 @@
 #include "pipeline/CaptureWorker.h"
 #include "pipeline/InferenceWorker.h"
 #include "pipeline/StatsProbe.h"
+#include "tracking/ITracker.h"
 #include "video/IVideoSource.h"
 
 namespace visionlab {
 
-// 纯 C++ 管线编排器：拥有视频源、检测器、有界队列和两条 jthread。
-// 非 QObject，不依赖 Qt。检测器由调用方注入，不包含 DetectorFactory。
-// Tracking 预留点在 InferenceWorker 的 detect 与 render 之间。
+// 纯 C++ 管线编排器：拥有视频源、检测器、可选跟踪器、有界队列和两条 jthread。
+// 非 QObject，不依赖 Qt。检测器由调用方注入。跟踪在推理线程、detect 与 render 之间。
 class VisionPipeline
 {
 public:
@@ -33,7 +33,8 @@ public:
 
     VisionPipeline(std::unique_ptr<IVideoSource> source,
                    std::map<DetectionMode, std::unique_ptr<IDetector>> detectors,
-                   std::size_t queueCapacity = kDefaultQueueCapacity);
+                   std::size_t queueCapacity = kDefaultQueueCapacity,
+                   std::unique_ptr<ITracker> tracker = {});
 
     VisionPipeline(const VisionPipeline&) = delete;
     VisionPipeline& operator=(const VisionPipeline&) = delete;
@@ -59,6 +60,7 @@ private:
 
     std::unique_ptr<IVideoSource> m_source;
     std::map<DetectionMode, std::unique_ptr<IDetector>> m_detectors;
+    std::unique_ptr<ITracker> m_tracker;
     const std::size_t m_queueCapacity;
 
     LatestResult<PresentedFrame> m_latest;
