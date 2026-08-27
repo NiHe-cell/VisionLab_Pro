@@ -85,6 +85,8 @@ add_library(visionlab_tracking STATIC
     tracking/IouMatching.cpp
     tracking/KalmanBoxFilter.h
     tracking/KalmanBoxFilter.cpp
+    tracking/ByteTrackTracker.h
+    tracking/ByteTrackTracker.cpp
 )
 target_include_directories(visionlab_tracking PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(visionlab_tracking PUBLIC visionlab_core)

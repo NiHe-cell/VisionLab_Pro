@@ -90,6 +90,10 @@ add_executable(tst_kalmanboxfilter KalmanBoxFilterTest.cpp)
 target_link_libraries(tst_kalmanboxfilter PRIVATE visionlab_tracking Qt6::Core Qt6::Test)
 add_test(NAME kalmanboxfilter COMMAND tst_kalmanboxfilter)
 
+add_executable(tst_bytetracktracker ByteTrackTrackerTest.cpp)
+target_link_libraries(tst_bytetracktracker PRIVATE visionlab_tracking Qt6::Core Qt6::Test)
+add_test(NAME bytetracktracker COMMAND tst_bytetracktracker)
+
 add_executable(tst_detectionrenderer DetectionRendererTest.cpp)
 target_link_libraries(tst_detectionrenderer PRIVATE visionlab_rendering Qt6::Core Qt6::Test)
 add_test(NAME detectionrenderer COMMAND tst_detectionrenderer)
@@ -358,7 +362,7 @@ if(WIN32)
     # 预编译 OpenCV 标准目录布局：<root>/build/x64/<toolset>/{lib,bin}
     get_filename_component(VISIONLAB_OPENCV_BIN "${OpenCV_DIR}/../bin" ABSOLUTE)
     set(visionlab_tests
-        smoke framepacket track modelconfig iinferenceengine onnxruntimeengine inferenceenginefactory onnxruntimecudaengine inferenceselection pluginmetadata idetector itracker ioumatching kalmanboxfilter detectionrenderer
+        smoke framepacket track modelconfig iinferenceengine onnxruntimeengine inferenceenginefactory onnxruntimecudaengine inferenceselection pluginmetadata idetector itracker ioumatching kalmanboxfilter bytetracktracker detectionrenderer
         yolodecoding yolopreprocess yolodetector ssddecoding motiondetector dummydetector dummyplugin motionplugin faceplugin yoloplugin pluginmanager ivideosource
         camerasource modemapping boundedqueue latestresult captureworker
         inferenceworker latencywindow statsprobe visionpipeline
