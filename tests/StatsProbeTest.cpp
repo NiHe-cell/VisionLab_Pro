@@ -15,6 +15,7 @@ private slots:
     void emptySnapshotIsZero();
     void accumulatesCaptureDropAndInference();
     void resetZerosCounters();
+    void onTrackedOverwritesCumulativeCounts();
     void concurrentRecordAndSnapshot();
 };
 
@@ -30,6 +31,11 @@ void StatsProbeTest::emptySnapshotIsZero()
     QCOMPARE(stats.p50InferenceLatencyMs, 0.0);
     QCOMPARE(stats.p95InferenceLatencyMs, 0.0);
     QCOMPARE(stats.endToEndLatencyMs, 0.0);
+    QCOMPARE(stats.activeTracks, std::size_t(0));
+    QCOMPARE(stats.createdTracks, std::uint64_t(0));
+    QCOMPARE(stats.lostTracks, std::uint64_t(0));
+    QCOMPARE(stats.removedTracks, std::uint64_t(0));
+    QCOMPARE(stats.avgTrackingLatencyMs, 0.0);
 }
 
 void StatsProbeTest::accumulatesCaptureDropAndInference()
@@ -63,6 +69,12 @@ void StatsProbeTest::resetZerosCounters()
     probe.onDropped(4);
     probe.onInferred(15.0, 25.0);
     probe.setQueueDepth(9);
+    visionlab::TrackerStats tracked;
+    tracked.activeTracks = 4;
+    tracked.createdTracks = 7;
+    tracked.lostTracks = 2;
+    tracked.removedTracks = 1;
+    probe.onTracked(tracked, 12.0);
     probe.reset();
 
     const PipelineStats stats = probe.snapshot();
@@ -75,6 +87,37 @@ void StatsProbeTest::resetZerosCounters()
     QCOMPARE(stats.captureFps, 0.0);
     QCOMPARE(stats.inferenceFps, 0.0);
     QCOMPARE(stats.renderFps, 0.0);
+    QCOMPARE(stats.activeTracks, std::size_t(0));
+    QCOMPARE(stats.createdTracks, std::uint64_t(0));
+    QCOMPARE(stats.lostTracks, std::uint64_t(0));
+    QCOMPARE(stats.removedTracks, std::uint64_t(0));
+    QCOMPARE(stats.avgTrackingLatencyMs, 0.0);
+}
+
+void StatsProbeTest::onTrackedOverwritesCumulativeCounts()
+{
+    StatsProbe probe;
+    visionlab::TrackerStats first;
+    first.activeTracks = 2;
+    first.createdTracks = 5;
+    first.lostTracks = 1;
+    first.removedTracks = 0;
+    probe.onTracked(first, 10.0);
+
+    visionlab::TrackerStats second;
+    second.activeTracks = 3;
+    second.createdTracks = 8;
+    second.lostTracks = 2;
+    second.removedTracks = 1;
+    probe.onTracked(second, 30.0);
+
+    const PipelineStats stats = probe.snapshot();
+    QCOMPARE(stats.activeTracks, std::size_t(3));
+    QCOMPARE(stats.createdTracks, std::uint64_t(8));
+    QCOMPARE(stats.lostTracks, std::uint64_t(2));
+    QCOMPARE(stats.removedTracks, std::uint64_t(1));
+    QCOMPARE(stats.avgTrackingLatencyMs, 20.0);
+    QCOMPARE(stats.avgInferenceLatencyMs, 0.0);
 }
 
 void StatsProbeTest::concurrentRecordAndSnapshot()

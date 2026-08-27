@@ -74,6 +74,7 @@ private slots:
     void publishesTracksWhenTrackerInjected();
     void emptyDetectionsYieldEmptyTracks();
     void modeChangeResetsTrackerOnInferenceThread();
+    void trackerFillsActiveTracksInStats();
 };
 
 void InferenceWorkerTest::closeOnEmptyQueueExits()
@@ -252,6 +253,25 @@ void InferenceWorkerTest::modeChangeResetsTrackerOnInferenceThread()
     const std::optional<PresentedFrame> view = out.snapshot();
     QVERIFY(view.has_value());
     QCOMPARE(view->tracks.front().trackId, std::uint64_t{1});
+}
+
+void InferenceWorkerTest::trackerFillsActiveTracksInStats()
+{
+    BoundedQueue<FramePacket> in(4, OverflowPolicy::DropOldest);
+    LatestResult<PresentedFrame> out;
+    FakeDetector detector;
+    FakeTracker tracker;
+    StatsProbe stats;
+    InferenceWorker worker(in, out, [&] { return &detector; }, stats, {}, {}, &tracker);
+
+    QVERIFY(in.push(makeBgrPacket(7)));
+    in.close();
+    worker.run(std::stop_token{});
+
+    const visionlab::PipelineStats snapshot = stats.snapshot();
+    QVERIFY(snapshot.activeTracks > 0);
+    QCOMPARE(snapshot.createdTracks, std::uint64_t(1));
+    QVERIFY(snapshot.avgTrackingLatencyMs >= 0.0);
 }
 
 QTEST_APPLESS_MAIN(InferenceWorkerTest)

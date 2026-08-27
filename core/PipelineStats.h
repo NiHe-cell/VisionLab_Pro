@@ -26,6 +26,12 @@ struct PipelineStats
     double p50InferenceLatencyMs = 0.0;
     double p95InferenceLatencyMs = 0.0;
     double endToEndLatencyMs = 0.0;
+
+    std::size_t activeTracks = 0;
+    std::uint64_t createdTracks = 0;
+    std::uint64_t lostTracks = 0;
+    std::uint64_t removedTracks = 0;
+    double avgTrackingLatencyMs = 0.0;
 };
 
 } // namespace visionlab

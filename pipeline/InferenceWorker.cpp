@@ -64,6 +64,7 @@ void InferenceWorker::run(std::stop_token stop)
                     m_tracker->reset();
                 m_lastMode = current;
             }
+            const auto trackBegin = std::chrono::steady_clock::now();
             try
             {
                 TrackUpdateContext context;
@@ -76,6 +77,10 @@ void InferenceWorker::run(std::stop_token stop)
                 std::cerr << "[InferenceWorker] track 异常: " << e.what() << '\n';
                 presented.tracks.clear();
             }
+            const double trackingMs = std::chrono::duration<double, std::milli>(
+                                          std::chrono::steady_clock::now() - trackBegin)
+                                          .count();
+            m_stats.onTracked(m_tracker->stats(), trackingMs);
         }
 
         try

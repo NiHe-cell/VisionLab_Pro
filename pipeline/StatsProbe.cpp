@@ -24,6 +24,16 @@ void StatsProbe::onInferred(double inferenceLatencyMs, double endToEndLatencyMs)
     m_totals.endToEndLatencyMs = endToEndLatencyMs;
 }
 
+void StatsProbe::onTracked(const TrackerStats& stats, double trackingLatencyMs)
+{
+    std::lock_guard lock(m_mutex);
+    m_totals.activeTracks = stats.activeTracks;
+    m_totals.createdTracks = stats.createdTracks;
+    m_totals.lostTracks = stats.lostTracks;
+    m_totals.removedTracks = stats.removedTracks;
+    m_trackingLatencies.record(trackingLatencyMs);
+}
+
 void StatsProbe::setQueueDepth(std::size_t depth)
 {
     std::lock_guard lock(m_mutex);
@@ -35,6 +45,7 @@ void StatsProbe::reset()
     std::lock_guard lock(m_mutex);
     m_totals = PipelineStats{};
     m_latencies.reset();
+    m_trackingLatencies.reset();
     m_origin = std::chrono::steady_clock::now();
 }
 
@@ -45,6 +56,7 @@ PipelineStats StatsProbe::snapshot() const
     stats.avgInferenceLatencyMs = m_latencies.mean();
     stats.p50InferenceLatencyMs = m_latencies.percentile(50.0);
     stats.p95InferenceLatencyMs = m_latencies.percentile(95.0);
+    stats.avgTrackingLatencyMs = m_trackingLatencies.mean();
 
     const double elapsed = std::chrono::duration<double>(
                                std::chrono::steady_clock::now() - m_origin)
