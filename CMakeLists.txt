@@ -62,6 +62,7 @@ add_library(visionlab_core STATIC
     core/VisionTypes.h
     core/FramePacket.h
     core/Detection.h
+    core/Track.h
     core/PipelineStats.h
     core/LatencyWindow.h
     core/BoundedQueue.h

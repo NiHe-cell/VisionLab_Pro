@@ -8,6 +8,10 @@ add_executable(tst_framepacket FramePacketTest.cpp)
 target_link_libraries(tst_framepacket PRIVATE visionlab_core Qt6::Core Qt6::Test)
 add_test(NAME framepacket COMMAND tst_framepacket)
 
+add_executable(tst_track TrackTest.cpp)
+target_link_libraries(tst_track PRIVATE visionlab_core Qt6::Core Qt6::Test)
+add_test(NAME track COMMAND tst_track)
+
 add_executable(tst_modelconfig ModelConfigTest.cpp)
 target_link_libraries(tst_modelconfig PRIVATE visionlab_core Qt6::Core Qt6::Test)
 add_test(NAME modelconfig COMMAND tst_modelconfig)
@@ -341,7 +345,7 @@ if(WIN32)
     # 预编译 OpenCV 标准目录布局：<root>/build/x64/<toolset>/{lib,bin}
     get_filename_component(VISIONLAB_OPENCV_BIN "${OpenCV_DIR}/../bin" ABSOLUTE)
     set(visionlab_tests
-        smoke framepacket modelconfig iinferenceengine onnxruntimeengine inferenceenginefactory onnxruntimecudaengine inferenceselection pluginmetadata idetector detectionrenderer
+        smoke framepacket track modelconfig iinferenceengine onnxruntimeengine inferenceenginefactory onnxruntimecudaengine inferenceselection pluginmetadata idetector detectionrenderer
         yolodecoding yolopreprocess yolodetector ssddecoding motiondetector dummydetector dummyplugin motionplugin faceplugin yoloplugin pluginmanager ivideosource
         camerasource modemapping boundedqueue latestresult captureworker
         inferenceworker latencywindow statsprobe visionpipeline
