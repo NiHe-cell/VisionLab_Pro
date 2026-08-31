@@ -86,6 +86,11 @@ target_link_libraries(tst_itracker PRIVATE visionlab_tracking Qt6::Core Qt6::Tes
 target_include_directories(tst_itracker PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 add_test(NAME itracker COMMAND tst_itracker)
 
+add_executable(tst_irule IRuleTest.cpp)
+target_link_libraries(tst_irule PRIVATE visionlab_analytics Qt6::Core Qt6::Test)
+target_include_directories(tst_irule PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+add_test(NAME irule COMMAND tst_irule)
+
 add_executable(tst_ioumatching IouMatchingTest.cpp)
 target_link_libraries(tst_ioumatching PRIVATE visionlab_tracking Qt6::Core Qt6::Test)
 add_test(NAME ioumatching COMMAND tst_ioumatching)
@@ -370,7 +375,7 @@ if(WIN32)
     # 预编译 OpenCV 标准目录布局：<root>/build/x64/<toolset>/{lib,bin}
     get_filename_component(VISIONLAB_OPENCV_BIN "${OpenCV_DIR}/../bin" ABSOLUTE)
     set(visionlab_tests
-        smoke framepacket track visionevent modelconfig iinferenceengine onnxruntimeengine inferenceenginefactory onnxruntimecudaengine inferenceselection pluginmetadata idetector itracker ioumatching kalmanboxfilter bytetracktracker detectionrenderer trackrenderer
+        smoke framepacket track visionevent modelconfig iinferenceengine onnxruntimeengine inferenceenginefactory onnxruntimecudaengine inferenceselection pluginmetadata idetector itracker irule ioumatching kalmanboxfilter bytetracktracker detectionrenderer trackrenderer
         yolodecoding yolopreprocess yolodetector ssddecoding motiondetector dummydetector dummyplugin motionplugin faceplugin yoloplugin pluginmanager ivideosource
         camerasource modemapping boundedqueue latestresult captureworker
         inferenceworker latencywindow statsprobe visionpipeline
