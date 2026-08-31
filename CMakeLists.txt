@@ -96,6 +96,8 @@ set_target_properties(visionlab_tracking PROPERTIES LINKER_LANGUAGE CXX)
 # 规则契约：纯 C++，不链接 Qt。算法实现在后续任务加入本目标。
 add_library(visionlab_analytics STATIC
     analytics/IRule.h
+    analytics/RuleGeometry.h
+    analytics/RuleGeometry.cpp
 )
 target_include_directories(visionlab_analytics PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(visionlab_analytics PUBLIC visionlab_core)
