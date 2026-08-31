@@ -16,6 +16,7 @@ private slots:
     void accumulatesCaptureDropAndInference();
     void resetZerosCounters();
     void onTrackedOverwritesCumulativeCounts();
+    void onRuledOverwritesCumulativeCounts();
     void concurrentRecordAndSnapshot();
 };
 
@@ -36,6 +37,9 @@ void StatsProbeTest::emptySnapshotIsZero()
     QCOMPARE(stats.lostTracks, std::uint64_t(0));
     QCOMPARE(stats.removedTracks, std::uint64_t(0));
     QCOMPARE(stats.avgTrackingLatencyMs, 0.0);
+    QCOMPARE(stats.eventsEmitted, std::uint64_t(0));
+    QCOMPARE(stats.enabledRules, std::size_t(0));
+    QCOMPARE(stats.avgRuleLatencyMs, 0.0);
 }
 
 void StatsProbeTest::accumulatesCaptureDropAndInference()
@@ -75,6 +79,10 @@ void StatsProbeTest::resetZerosCounters()
     tracked.lostTracks = 2;
     tracked.removedTracks = 1;
     probe.onTracked(tracked, 12.0);
+    visionlab::RuleEngineStats ruled;
+    ruled.eventsEmitted = 3;
+    ruled.enabledRules = 1;
+    probe.onRuled(ruled, 8.0);
     probe.reset();
 
     const PipelineStats stats = probe.snapshot();
@@ -92,6 +100,9 @@ void StatsProbeTest::resetZerosCounters()
     QCOMPARE(stats.lostTracks, std::uint64_t(0));
     QCOMPARE(stats.removedTracks, std::uint64_t(0));
     QCOMPARE(stats.avgTrackingLatencyMs, 0.0);
+    QCOMPARE(stats.eventsEmitted, std::uint64_t(0));
+    QCOMPARE(stats.enabledRules, std::size_t(0));
+    QCOMPARE(stats.avgRuleLatencyMs, 0.0);
 }
 
 void StatsProbeTest::onTrackedOverwritesCumulativeCounts()
@@ -117,6 +128,26 @@ void StatsProbeTest::onTrackedOverwritesCumulativeCounts()
     QCOMPARE(stats.lostTracks, std::uint64_t(2));
     QCOMPARE(stats.removedTracks, std::uint64_t(1));
     QCOMPARE(stats.avgTrackingLatencyMs, 20.0);
+    QCOMPARE(stats.avgInferenceLatencyMs, 0.0);
+}
+
+void StatsProbeTest::onRuledOverwritesCumulativeCounts()
+{
+    StatsProbe probe;
+    visionlab::RuleEngineStats first;
+    first.eventsEmitted = 4;
+    first.enabledRules = 1;
+    probe.onRuled(first, 10.0);
+
+    visionlab::RuleEngineStats second;
+    second.eventsEmitted = 9;
+    second.enabledRules = 2;
+    probe.onRuled(second, 30.0);
+
+    const PipelineStats stats = probe.snapshot();
+    QCOMPARE(stats.eventsEmitted, std::uint64_t(9));
+    QCOMPARE(stats.enabledRules, std::size_t(2));
+    QCOMPARE(stats.avgRuleLatencyMs, 20.0);
     QCOMPARE(stats.avgInferenceLatencyMs, 0.0);
 }
 

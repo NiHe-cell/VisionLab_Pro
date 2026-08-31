@@ -7,7 +7,10 @@
 #include <thread>
 
 #include "core/VisionTypes.h"
+#include "analytics/RuleEngine.h"
 #include "fakes/FakeDetector.h"
+#include "fakes/FakeRule.h"
+#include "fakes/FakeTracker.h"
 #include "fakes/FakeVideoSource.h"
 #include "fakes/SlowDetector.h"
 #include "fakes/ThrowingDetector.h"
@@ -17,6 +20,7 @@
 using visionlab::ByteTrackTracker;
 using visionlab::DetectionMode;
 using visionlab::IDetector;
+using visionlab::RuleEngine;
 using visionlab::VisionPipeline;
 
 namespace {
@@ -55,6 +59,7 @@ private slots:
     void sourceCloseThenStopJoins();
     void detectExceptionDoesNotAbort();
     void startStopStartWithByteTrack();
+    void startStopLeavesEventLogAccessible();
 };
 
 void PipelineLifecycleTest::stopJoinsWhileDetectSleeps()
@@ -147,6 +152,33 @@ void PipelineLifecycleTest::startStopStartWithByteTrack()
     QVERIFY(waitUntil([&] {
         const auto frame = pipeline.latest();
         return frame && !frame->tracks.empty() && frame->tracks.front().trackId == 1;
+    }));
+    pipeline.stop();
+    QVERIFY(!pipeline.isRunning());
+}
+
+void PipelineLifecycleTest::startStopLeavesEventLogAccessible()
+{
+    auto source = std::make_unique<FakeVideoSource>(64, "fake:life-events", true, true);
+    auto engine = std::make_unique<RuleEngine>();
+    QVERIFY(engine->addRule(std::make_unique<FakeRule>()));
+    VisionPipeline pipeline(std::move(source), makeFaceDetector(),
+                            VisionPipeline::kDefaultQueueCapacity,
+                            std::make_unique<FakeTracker>(),
+                            std::move(engine));
+    pipeline.setMode(DetectionMode::Face);
+
+    QVERIFY(pipeline.start());
+    QVERIFY(waitUntil([&] { return !pipeline.recentEvents().empty(); }));
+    pipeline.stop();
+    QVERIFY(!pipeline.isRunning());
+    (void)pipeline.recentEvents();
+    QVERIFY(pipeline.recentEvents().size() > 0);
+
+    QVERIFY(pipeline.start());
+    QVERIFY(waitUntil([&] {
+        const auto events = pipeline.recentEvents();
+        return !events.empty() && events.front().eventId == 1;
     }));
     pipeline.stop();
     QVERIFY(!pipeline.isRunning());

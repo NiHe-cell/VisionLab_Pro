@@ -15,6 +15,7 @@
 #include "inference/InferenceEngineFactory.h"
 #include "inference/InferenceSelection.h"
 #include "plugin/DetectorCreateRequest.h"
+#include "analytics/RuleEngine.h"
 #include "tracking/ByteTrackTracker.h"
 #include "video/CameraSource.h"
 
@@ -151,10 +152,12 @@ void CameraManager::assembleFromPlugins(std::unique_ptr<visionlab::IVideoSource>
         detectors.emplace(mode, std::move(detector));
     }
 
+    // 生产注入空 RuleEngine，不注册默认 ROI / 越线。
     m_pipeline = std::make_unique<visionlab::VisionPipeline>(
         std::move(source), std::move(detectors),
         visionlab::VisionPipeline::kDefaultQueueCapacity,
-        std::make_unique<visionlab::ByteTrackTracker>());
+        std::make_unique<visionlab::ByteTrackTracker>(),
+        std::make_unique<visionlab::RuleEngine>());
     m_pipeline->setMode(visionlab::DetectionMode::Face);
 }
 

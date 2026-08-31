@@ -314,6 +314,8 @@ target_link_libraries(visionlab_video PUBLIC visionlab_core)
 add_library(visionlab_pipeline STATIC
     pipeline/CaptureWorker.h
     pipeline/CaptureWorker.cpp
+    pipeline/EventLog.h
+    pipeline/EventLog.cpp
     pipeline/InferenceWorker.h
     pipeline/InferenceWorker.cpp
     pipeline/StatsProbe.h
@@ -321,7 +323,12 @@ add_library(visionlab_pipeline STATIC
     pipeline/VisionPipeline.h
     pipeline/VisionPipeline.cpp
 )
-target_link_libraries(visionlab_pipeline PUBLIC visionlab_core visionlab_rendering visionlab_tracking)
+target_link_libraries(visionlab_pipeline PUBLIC
+    visionlab_core
+    visionlab_rendering
+    visionlab_tracking
+    visionlab_analytics
+)
 target_include_directories(visionlab_pipeline PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
 qt_add_executable(appVisionLab

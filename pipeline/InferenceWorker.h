@@ -10,7 +10,9 @@
 #include "core/LatestResult.h"
 #include "core/PresentedFrame.h"
 #include "core/VisionTypes.h"
+#include "analytics/RuleEngine.h"
 #include "detectors/IDetector.h"
+#include "pipeline/EventLog.h"
 #include "pipeline/StatsProbe.h"
 #include "rendering/DetectionRenderer.h"
 #include "rendering/TrackRenderer.h"
@@ -18,9 +20,9 @@
 
 namespace visionlab {
 
-// 推理工作线程体：从有界队列取帧、调用 IDetector、可选 ITracker，同线程绘制并发布。
-// 不拥有 jthread。检测器与模式由获取器注入。跟踪在本线程、detect 与 render 之间。
-// 有 tracks 时用 TrackRenderer，否则回退 DetectionRenderer。
+// 推理工作线程体：从有界队列取帧、调用 IDetector、可选 ITracker 与 RuleEngine，同线程绘制并发布。
+// 不拥有 jthread。检测器与模式由获取器注入。跟踪与规则在本线程、detect 与 render 之间。
+// 规则在 track 之后。有 tracks 时用 TrackRenderer，否则回退 DetectionRenderer。
 class InferenceWorker
 {
 public:
@@ -34,7 +36,9 @@ public:
                     std::function<void()> onPresented = {},
                     DetectionRenderer renderer = {},
                     ITracker* tracker = nullptr,
-                    ModeProvider mode = {});
+                    ModeProvider mode = {},
+                    RuleEngine* rules = nullptr,
+                    EventLog* events = nullptr);
 
     void run(std::stop_token stop);
 
@@ -49,6 +53,8 @@ private:
     ITracker* m_tracker;
     ModeProvider m_mode;
     std::optional<DetectionMode> m_lastMode;
+    RuleEngine* m_rules;
+    EventLog* m_eventLog;
 };
 
 } // namespace visionlab

@@ -10,6 +10,7 @@
 
 #include "core/Detection.h"
 #include "core/Track.h"
+#include "core/VisionEvent.h"
 
 namespace visionlab {
 
@@ -17,6 +18,7 @@ namespace visionlab {
 //
 // rgb 为独立连续的 RGB888 缓冲（已从 BGR 转换），可供 QImage 深拷贝。
 // detections 是检测器输出；tracks 由 ITracker 填充，无跟踪器时为空。
+// events 是本帧新规则事件，无规则引擎时为空；历史在 EventLog。
 struct PresentedFrame
 {
     std::int64_t frameId = 0;
@@ -25,6 +27,7 @@ struct PresentedFrame
     cv::Mat rgb;
     std::vector<Detection> detections;
     std::vector<Track> tracks;
+    std::vector<VisionEvent> events;
     double inferenceLatencyMs = 0.0;
 };
 

@@ -14,7 +14,9 @@ InferenceWorker::InferenceWorker(BoundedQueue<FramePacket>& in,
                                  std::function<void()> onPresented,
                                  DetectionRenderer renderer,
                                  ITracker* tracker,
-                                 ModeProvider mode)
+                                 ModeProvider mode,
+                                 RuleEngine* rules,
+                                 EventLog* events)
     : m_in(in)
     , m_out(out)
     , m_detector(std::move(detector))
@@ -23,6 +25,8 @@ InferenceWorker::InferenceWorker(BoundedQueue<FramePacket>& in,
     , m_renderer(std::move(renderer))
     , m_tracker(tracker)
     , m_mode(std::move(mode))
+    , m_rules(rules)
+    , m_eventLog(events)
 {
 }
 
@@ -55,15 +59,21 @@ void InferenceWorker::run(std::stop_token stop)
         presented.inferenceLatencyMs =
             std::chrono::duration<double, std::milli>(detectEnd - detectBegin).count();
 
+        if (m_mode)
+        {
+            const DetectionMode current = m_mode();
+            if (m_lastMode.has_value() && *m_lastMode != current)
+            {
+                if (m_tracker)
+                    m_tracker->reset();
+                if (m_rules)
+                    m_rules->reset();
+            }
+            m_lastMode = current;
+        }
+
         if (m_tracker)
         {
-            if (m_mode)
-            {
-                const DetectionMode current = m_mode();
-                if (m_lastMode.has_value() && *m_lastMode != current)
-                    m_tracker->reset();
-                m_lastMode = current;
-            }
             const auto trackBegin = std::chrono::steady_clock::now();
             try
             {
@@ -81,6 +91,30 @@ void InferenceWorker::run(std::stop_token stop)
                                           std::chrono::steady_clock::now() - trackBegin)
                                           .count();
             m_stats.onTracked(m_tracker->stats(), trackingMs);
+        }
+
+        if (m_rules)
+        {
+            const auto ruleBegin = std::chrono::steady_clock::now();
+            try
+            {
+                RuleContext context;
+                context.frameId = packet.frameId;
+                context.timestamp = packet.captureTimestamp;
+                context.sourceId = packet.sourceId;
+                presented.events = m_rules->evaluate(presented.tracks, context);
+            }
+            catch (const cv::Exception& e)
+            {
+                std::cerr << "[InferenceWorker] rules 异常: " << e.what() << '\n';
+                presented.events.clear();
+            }
+            const double ruleMs = std::chrono::duration<double, std::milli>(
+                                      std::chrono::steady_clock::now() - ruleBegin)
+                                      .count();
+            if (m_eventLog)
+                m_eventLog->push(presented.events);
+            m_stats.onRuled(m_rules->stats(), ruleMs);
         }
 
         try

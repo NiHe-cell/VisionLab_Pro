@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <memory>
 #include <thread>
 
 #include "core/BoundedQueue.h"
@@ -9,19 +10,24 @@
 #include "core/LatestResult.h"
 #include "core/PresentedFrame.h"
 #include "core/VisionTypes.h"
+#include "analytics/RuleEngine.h"
 #include "fakes/FakeDetector.h"
+#include "fakes/FakeRule.h"
 #include "fakes/FakeTracker.h"
 #include "fakes/SlowDetector.h"
+#include "pipeline/EventLog.h"
 #include "pipeline/InferenceWorker.h"
 #include "pipeline/StatsProbe.h"
 
 using visionlab::BoundedQueue;
 using visionlab::DetectionMode;
+using visionlab::EventLog;
 using visionlab::FramePacket;
 using visionlab::InferenceWorker;
 using visionlab::LatestResult;
 using visionlab::OverflowPolicy;
 using visionlab::PresentedFrame;
+using visionlab::RuleEngine;
 using visionlab::StatsProbe;
 
 namespace {
@@ -75,6 +81,10 @@ private slots:
     void emptyDetectionsYieldEmptyTracks();
     void modeChangeResetsTrackerOnInferenceThread();
     void trackerFillsActiveTracksInStats();
+    void noRulesLeavesEventsEmpty();
+    void fakeTrackerAndRuleFillEventsAndLog();
+    void emptyDetectionsYieldEmptyEvents();
+    void modeChangeResetsRulesOnInferenceThread();
 };
 
 void InferenceWorkerTest::closeOnEmptyQueueExits()
@@ -109,6 +119,7 @@ void InferenceWorkerTest::publishesDetectionsAndConvertsToRgb()
     QCOMPARE(view->detections.size(), std::size_t(1));
     QCOMPARE(view->detections.front().label, std::string("fake-object"));
     QVERIFY(view->tracks.empty());
+    QVERIFY(view->events.empty());
     QVERIFY(view->inferenceLatencyMs >= 0.0);
 
     QCOMPARE(view->rgb.cols, 20);
@@ -203,6 +214,7 @@ void InferenceWorkerTest::publishesTracksWhenTrackerInjected()
     QCOMPARE(view->tracks.front().label, view->detections.front().label);
     QCOMPARE(view->tracks.front().trackId, std::uint64_t{1});
     QCOMPARE(view->tracks.front().box, view->detections.front().box);
+    QVERIFY(view->events.empty());
     QCOMPARE(view->rgb.cols, 20);
     QCOMPARE(view->rgb.rows, 16);
     QCOMPARE(view->rgb.type(), CV_8UC3);
@@ -272,6 +284,110 @@ void InferenceWorkerTest::trackerFillsActiveTracksInStats()
     QVERIFY(snapshot.activeTracks > 0);
     QCOMPARE(snapshot.createdTracks, std::uint64_t(1));
     QVERIFY(snapshot.avgTrackingLatencyMs >= 0.0);
+}
+
+void InferenceWorkerTest::noRulesLeavesEventsEmpty()
+{
+    BoundedQueue<FramePacket> in(4, OverflowPolicy::DropOldest);
+    LatestResult<PresentedFrame> out;
+    FakeDetector detector;
+    StatsProbe stats;
+    InferenceWorker worker(in, out, [&] { return &detector; }, stats);
+
+    QVERIFY(in.push(makeBgrPacket(7)));
+    in.close();
+    worker.run(std::stop_token{});
+
+    const std::optional<PresentedFrame> view = out.snapshot();
+    QVERIFY(view.has_value());
+    QCOMPARE(view->detections.size(), std::size_t(1));
+    QVERIFY(view->events.empty());
+    QCOMPARE(stats.snapshot().eventsEmitted, std::uint64_t(0));
+    QCOMPARE(stats.snapshot().enabledRules, std::size_t(0));
+}
+
+void InferenceWorkerTest::fakeTrackerAndRuleFillEventsAndLog()
+{
+    BoundedQueue<FramePacket> in(4, OverflowPolicy::DropOldest);
+    LatestResult<PresentedFrame> out;
+    FakeDetector detector;
+    FakeTracker tracker;
+    RuleEngine engine;
+    QVERIFY(engine.addRule(std::make_unique<FakeRule>()));
+    EventLog log;
+    StatsProbe stats;
+    InferenceWorker worker(in, out, [&] { return &detector; }, stats, {}, {},
+                           &tracker, {}, &engine, &log);
+
+    QVERIFY(in.push(makeBgrPacket(7)));
+    in.close();
+    worker.run(std::stop_token{});
+
+    const std::optional<PresentedFrame> view = out.snapshot();
+    QVERIFY(view.has_value());
+    QCOMPARE(view->events.size(), view->tracks.size());
+    QCOMPARE(view->events.front().eventId, std::uint64_t{1});
+    QCOMPARE(view->events.front().message, std::string("fake"));
+    QVERIFY(log.size() > 0);
+    QCOMPARE(log.snapshot().front().eventId, std::uint64_t{1});
+}
+
+void InferenceWorkerTest::emptyDetectionsYieldEmptyEvents()
+{
+    BoundedQueue<FramePacket> in(2, OverflowPolicy::DropOldest);
+    LatestResult<PresentedFrame> out;
+    SlowDetector detector{std::chrono::milliseconds(0)};
+    FakeTracker tracker;
+    RuleEngine engine;
+    QVERIFY(engine.addRule(std::make_unique<FakeRule>()));
+    EventLog log;
+    StatsProbe stats;
+    InferenceWorker worker(in, out, [&] { return &detector; }, stats, {}, {},
+                           &tracker, {}, &engine, &log);
+
+    QVERIFY(in.push(makeBgrPacket(1)));
+    in.close();
+    worker.run(std::stop_token{});
+
+    const std::optional<PresentedFrame> view = out.snapshot();
+    QVERIFY(view.has_value());
+    QVERIFY(view->detections.empty());
+    QVERIFY(view->tracks.empty());
+    QVERIFY(view->events.empty());
+    QCOMPARE(log.size(), std::size_t{0});
+}
+
+void InferenceWorkerTest::modeChangeResetsRulesOnInferenceThread()
+{
+    BoundedQueue<FramePacket> in(4, OverflowPolicy::DropOldest);
+    LatestResult<PresentedFrame> out;
+    FakeDetector detector;
+    FakeTracker tracker;
+    auto rule = std::make_unique<FakeRule>();
+    FakeRule* rulePtr = rule.get();
+    RuleEngine engine;
+    QVERIFY(engine.addRule(std::move(rule)));
+    EventLog log;
+    StatsProbe stats;
+    int modeCalls = 0;
+    InferenceWorker worker(
+        in, out, [&] { return &detector; }, stats, {}, {}, &tracker,
+        [&] {
+            ++modeCalls;
+            return modeCalls == 1 ? DetectionMode::Face : DetectionMode::Object;
+        },
+        &engine, &log);
+
+    QVERIFY(in.push(makeBgrPacket(1)));
+    QVERIFY(in.push(makeBgrPacket(2)));
+    in.close();
+    worker.run(std::stop_token{});
+
+    QCOMPARE(tracker.resetCount(), 1);
+    QCOMPARE(rulePtr->resetCount(), 1);
+    const std::optional<PresentedFrame> view = out.snapshot();
+    QVERIFY(view.has_value());
+    QCOMPARE(view->events.front().eventId, std::uint64_t{1});
 }
 
 QTEST_APPLESS_MAIN(InferenceWorkerTest)

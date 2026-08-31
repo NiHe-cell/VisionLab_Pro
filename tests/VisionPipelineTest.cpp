@@ -7,7 +7,9 @@
 #include <thread>
 
 #include "core/VisionTypes.h"
+#include "analytics/RuleEngine.h"
 #include "fakes/FakeDetector.h"
+#include "fakes/FakeRule.h"
 #include "fakes/FakeTracker.h"
 #include "fakes/FakeVideoSource.h"
 #include "pipeline/VisionPipeline.h"
@@ -19,6 +21,7 @@ using visionlab::DetectionMode;
 using visionlab::IDetector;
 using visionlab::ITracker;
 using visionlab::IVideoSource;
+using visionlab::RuleEngine;
 using visionlab::VisionPipeline;
 
 namespace {
@@ -75,6 +78,10 @@ private slots:
     void byteTrackConfirmsStableId();
     void byteTrackRestartAllocatesIdFromOne();
     void byteTrackModeChangeRestartsIds();
+    void fakeRuleFillsLatestAndRecentEvents();
+    void defaultPipelineEmitsNoEvents();
+    void restartResetsEventIds();
+    void emptyRuleEngineWithByteTrackEmitsNoEvents();
 };
 
 void VisionPipelineTest::startProducesLatestThenStopJoins()
@@ -88,6 +95,8 @@ void VisionPipelineTest::startProducesLatestThenStopJoins()
     QVERIFY(waitLatest(pipeline));
     QVERIFY(pipeline.stats().capturedFrames > 0);
     QVERIFY(pipeline.latest()->frameId >= 1);
+    QVERIFY(pipeline.latest()->events.empty());
+    QVERIFY(pipeline.recentEvents().empty());
 
     pipeline.stop();
     QVERIFY(!pipeline.isRunning());
@@ -252,6 +261,82 @@ void VisionPipelineTest::byteTrackModeChangeRestartsIds()
                && frame->detections.front().label == "object"
                && frame->tracks.front().trackId == 1;
     }));
+    pipeline.stop();
+}
+
+void VisionPipelineTest::fakeRuleFillsLatestAndRecentEvents()
+{
+    auto source = std::make_unique<FakeVideoSource>(32, "fake:rules", true, true);
+    auto tracker = std::make_unique<FakeTracker>();
+    auto engine = std::make_unique<RuleEngine>();
+    QVERIFY(engine->addRule(std::make_unique<FakeRule>()));
+    VisionPipeline pipeline(std::move(source), makeDetectors(),
+                            VisionPipeline::kDefaultQueueCapacity,
+                            std::move(tracker), std::move(engine));
+    pipeline.setMode(DetectionMode::Face);
+
+    QVERIFY(pipeline.start());
+    QVERIFY(waitUntil([&] {
+        const auto frame = pipeline.latest();
+        return frame && !frame->events.empty();
+    }));
+    QVERIFY(!pipeline.recentEvents().empty());
+    QCOMPARE(pipeline.latest()->events.size(), pipeline.latest()->tracks.size());
+    pipeline.stop();
+}
+
+void VisionPipelineTest::defaultPipelineEmitsNoEvents()
+{
+    auto source = std::make_unique<FakeVideoSource>(32, "fake:no-rules", true, true);
+    VisionPipeline pipeline(std::move(source), makeDetectors());
+    pipeline.setMode(DetectionMode::Face);
+    QVERIFY(pipeline.start());
+    QVERIFY(waitLatest(pipeline));
+    QVERIFY(pipeline.latest()->events.empty());
+    QVERIFY(pipeline.recentEvents().empty());
+    pipeline.stop();
+}
+
+void VisionPipelineTest::restartResetsEventIds()
+{
+    auto source = std::make_unique<FakeVideoSource>(64, "fake:event-restart", true, true);
+    auto tracker = std::make_unique<FakeTracker>();
+    auto engine = std::make_unique<RuleEngine>();
+    QVERIFY(engine->addRule(std::make_unique<FakeRule>()));
+    VisionPipeline pipeline(std::move(source), makeDetectors(),
+                            VisionPipeline::kDefaultQueueCapacity,
+                            std::move(tracker), std::move(engine));
+    pipeline.setMode(DetectionMode::Face);
+
+    QVERIFY(pipeline.start());
+    QVERIFY(waitUntil([&] { return pipeline.recentEvents().size() >= 8; }));
+    const auto leftover = pipeline.recentEvents().size();
+    pipeline.stop();
+
+    QVERIFY(pipeline.start());
+    QVERIFY(waitUntil([&] { return pipeline.stats().processedFrames >= 3; }));
+    const auto events = pipeline.recentEvents();
+    QVERIFY(!events.empty());
+    QVERIFY(events.size() < leftover);
+    QCOMPARE(events.front().eventId, std::uint64_t{1});
+    pipeline.stop();
+}
+
+void VisionPipelineTest::emptyRuleEngineWithByteTrackEmitsNoEvents()
+{
+    auto source = std::make_unique<FakeVideoSource>(32, "fake:empty-engine", true, true);
+    VisionPipeline pipeline(std::move(source), makeDetectors(),
+                            VisionPipeline::kDefaultQueueCapacity,
+                            std::make_unique<ByteTrackTracker>(),
+                            std::make_unique<RuleEngine>());
+    pipeline.setMode(DetectionMode::Face);
+    QVERIFY(pipeline.start());
+    QVERIFY(waitUntil([&] {
+        const auto frame = pipeline.latest();
+        return frame && !frame->tracks.empty();
+    }));
+    QVERIFY(pipeline.latest()->events.empty());
+    QVERIFY(pipeline.recentEvents().empty());
     pipeline.stop();
 }
 

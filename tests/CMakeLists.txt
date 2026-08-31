@@ -258,6 +258,10 @@ add_executable(tst_statsprobe StatsProbeTest.cpp)
 target_link_libraries(tst_statsprobe PRIVATE visionlab_pipeline Qt6::Core Qt6::Test)
 add_test(NAME statsprobe COMMAND tst_statsprobe)
 
+add_executable(tst_eventlog EventLogTest.cpp)
+target_link_libraries(tst_eventlog PRIVATE visionlab_pipeline Qt6::Core Qt6::Test)
+add_test(NAME eventlog COMMAND tst_eventlog)
+
 add_executable(tst_visionpipeline VisionPipelineTest.cpp)
 target_link_libraries(tst_visionpipeline PRIVATE visionlab_pipeline Qt6::Core Qt6::Test)
 target_include_directories(tst_visionpipeline PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
@@ -403,7 +407,7 @@ if(WIN32)
         smoke framepacket track visionevent modelconfig iinferenceengine onnxruntimeengine inferenceenginefactory onnxruntimecudaengine inferenceselection pluginmetadata idetector itracker irule rulegeometry roiintrusion linecrossing loitering counting ruleengine ioumatching kalmanboxfilter bytetracktracker detectionrenderer trackrenderer
         yolodecoding yolopreprocess yolodetector ssddecoding motiondetector dummydetector dummyplugin motionplugin faceplugin yoloplugin pluginmanager ivideosource
         camerasource modemapping boundedqueue latestresult captureworker
-        inferenceworker latencywindow statsprobe visionpipeline
+        inferenceworker latencywindow statsprobe eventlog visionpipeline
         pipelineoverload pipelinelifecycle cameramanager localecontroller
         onnxcpubench)
     if(VISIONLAB_ENABLE_TENSORRT)

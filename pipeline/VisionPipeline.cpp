@@ -5,10 +5,12 @@ namespace visionlab {
 VisionPipeline::VisionPipeline(std::unique_ptr<IVideoSource> source,
                                std::map<DetectionMode, std::unique_ptr<IDetector>> detectors,
                                std::size_t queueCapacity,
-                               std::unique_ptr<ITracker> tracker)
+                               std::unique_ptr<ITracker> tracker,
+                               std::unique_ptr<RuleEngine> rules)
     : m_source(std::move(source))
     , m_detectors(std::move(detectors))
     , m_tracker(std::move(tracker))
+    , m_rules(std::move(rules))
     , m_queueCapacity(queueCapacity)
 {
 }
@@ -30,12 +32,16 @@ bool VisionPipeline::start()
     m_stats.reset();
     if (m_tracker)
         m_tracker->reset();
+    if (m_rules)
+        m_rules->reset();
+    m_eventLog.reset();
     m_queue = std::make_unique<BoundedQueue<FramePacket>>(
         m_queueCapacity, OverflowPolicy::DropOldest);
     m_captureWorker = std::make_unique<CaptureWorker>(*m_source, *m_queue, m_stats);
     m_inferenceWorker = std::make_unique<InferenceWorker>(
         *m_queue, m_latest, [this] { return currentDetector(); }, m_stats, m_onPresented,
-        DetectionRenderer{}, m_tracker.get(), [this] { return mode(); });
+        DetectionRenderer{}, m_tracker.get(), [this] { return mode(); },
+        m_rules.get(), &m_eventLog);
 
     m_captureThread = std::jthread([this](std::stop_token stop) {
         m_captureWorker->run(stop);
@@ -76,6 +82,11 @@ std::optional<PresentedFrame> VisionPipeline::latest() const
 PipelineStats VisionPipeline::stats() const
 {
     return m_stats.snapshot();
+}
+
+std::vector<VisionEvent> VisionPipeline::recentEvents() const
+{
+    return m_eventLog.snapshot();
 }
 
 void VisionPipeline::setPresentedCallback(std::function<void()> callback)

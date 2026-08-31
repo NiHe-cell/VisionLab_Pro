@@ -171,12 +171,35 @@ other rules still run.
 (no default ROI or line). There is no `VISIONLAB_RULES` environment
 switch and no QML enable property (Phase 8).
 
+`InferenceWorker` evaluates rules after `ITracker::update` and before
+render, on the inference thread only. `evaluate` is wrapped in
+`cv::Exception` catch: that frame's `PresentedFrame.events` is cleared
+and the worker continues. Null `RuleEngine*` skips evaluate and
+`onRuled`.
+
+`VisionPipeline` owns `std::unique_ptr<RuleEngine>` and a value
+`EventLog` (capacity **256**, DropOldest, mutex). Inference thread
+`push`es; any thread may `snapshot`. `recentEvents()` returns a copy.
+`PresentedFrame.events` is this frame's new events only.
+
+`start()` resets tracker, engine, and EventLog on the caller thread
+**before** the inference `jthread` exists. `setMode` only stores the
+atomic mode; it must not call `RuleEngine::reset()`. Mode change reset
+happens on the inference thread before the next update / evaluate.
+`stop()` does not clear EventLog.
+
+`StatsProbe::onRuled` overwrites `eventsEmitted` / `enabledRules` and
+records rule latency in a separate window (`avgRuleLatencyMs`). Rule
+time is not added to `avgInferenceLatencyMs`.
+
 An empty engine (or null `RuleEngine*`) leaves `PresentedFrame.events`
-empty and new `PipelineStats` fields at 0 — same visible behavior as
-Phase 6.
+empty and `eventsEmitted` / `enabledRules` at 0 — same visible
+behavior as Phase 6.
 
 `IDetector` / `IVisionPlugin` / `ITracker` must not mention `IRule`.
 The engine is owned by `VisionPipeline`, not created by plugins.
+`detectors/`, `plugins/`, and `tracking/` must not include analytics
+headers.
 
 ## Known V1 limits
 

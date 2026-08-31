@@ -32,6 +32,10 @@ struct PipelineStats
     std::uint64_t lostTracks = 0;
     std::uint64_t removedTracks = 0;
     double avgTrackingLatencyMs = 0.0;
+
+    std::uint64_t eventsEmitted = 0;
+    std::size_t enabledRules = 0;
+    double avgRuleLatencyMs = 0.0;
 };
 
 } // namespace visionlab
