@@ -100,6 +100,8 @@ add_library(visionlab_analytics STATIC
     analytics/RuleGeometry.cpp
     analytics/CountingRule.h
     analytics/CountingRule.cpp
+    analytics/RuleEngine.h
+    analytics/RuleEngine.cpp
 )
 target_include_directories(visionlab_analytics PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(visionlab_analytics PUBLIC visionlab_core)

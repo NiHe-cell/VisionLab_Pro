@@ -99,6 +99,11 @@ add_executable(tst_counting CountingRuleTest.cpp)
 target_link_libraries(tst_counting PRIVATE visionlab_analytics Qt6::Core Qt6::Test)
 add_test(NAME counting COMMAND tst_counting)
 
+add_executable(tst_ruleengine RuleEngineTest.cpp)
+target_link_libraries(tst_ruleengine PRIVATE visionlab_analytics Qt6::Core Qt6::Test)
+target_include_directories(tst_ruleengine PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+add_test(NAME ruleengine COMMAND tst_ruleengine)
+
 add_executable(tst_ioumatching IouMatchingTest.cpp)
 target_link_libraries(tst_ioumatching PRIVATE visionlab_tracking Qt6::Core Qt6::Test)
 add_test(NAME ioumatching COMMAND tst_ioumatching)
@@ -383,7 +388,7 @@ if(WIN32)
     # 预编译 OpenCV 标准目录布局：<root>/build/x64/<toolset>/{lib,bin}
     get_filename_component(VISIONLAB_OPENCV_BIN "${OpenCV_DIR}/../bin" ABSOLUTE)
     set(visionlab_tests
-        smoke framepacket track visionevent modelconfig iinferenceengine onnxruntimeengine inferenceenginefactory onnxruntimecudaengine inferenceselection pluginmetadata idetector itracker irule rulegeometry counting ioumatching kalmanboxfilter bytetracktracker detectionrenderer trackrenderer
+        smoke framepacket track visionevent modelconfig iinferenceengine onnxruntimeengine inferenceenginefactory onnxruntimecudaengine inferenceselection pluginmetadata idetector itracker irule rulegeometry counting ruleengine ioumatching kalmanboxfilter bytetracktracker detectionrenderer trackrenderer
         yolodecoding yolopreprocess yolodetector ssddecoding motiondetector dummydetector dummyplugin motionplugin faceplugin yoloplugin pluginmanager ivideosource
         camerasource modemapping boundedqueue latestresult captureworker
         inferenceworker latencywindow statsprobe visionpipeline
