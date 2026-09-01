@@ -56,88 +56,173 @@ another report file. See `.cursor/rules/task-summary-report.mdc`.
 
 ---
 
-# Phase 7 — Intelligent Event / Rule Engine 任务分解
+# Phase 8 — Qt/QML 监控台、规则绘制与事件存储 任务分解
 
-对照 HEAD `cec53c1`（`feat(app): enable ByteTrack on the production vision pipeline`）。
-Phase 0–6 已收口。仓库里没有 `IRule` / `VisionEvent` / `analytics/`。
-`InferenceWorker` 在 `ITracker::update` 之后、render 之前可以插入规则求值，且本阶段不增加线程。
+对照 HEAD `ad3c19e`（`feat(pipeline): evaluate rules after track and keep a bounded event log`）。
+Phase 0–7 实现已提交。Phase 7 未做单独「收口」提交，但不阻塞本阶段：
+`IRule` / 四条规则 / `RuleEngine` / `EventLog` / 生产空引擎都在 `master` 上。
 
-工作区里 `inference/` 等文件有未提交换行符噪声，`AGENTS.md` 有任务报告约定的未提交增补。
-Phase 7 提交不要把这些文件卷进去。
+当前 UI 仍是单页：无边框窗口 + 标题栏中英切换 + 启停 + 三种检测模式 + `CameraView`。
+QML 只吃 `image://camera/live`。`CameraView` 使用 `Image.PreserveAspectCrop`，
+不能把叠加层坐标映回原始帧。`VisionController` 只有 `mode` / `running`。
+没有 `QAbstractListModel`、没有 Events/Performance/Settings 页、没有 SQLite、
+没有 `RuleSpec`、`RuleEngine` 不能 `clear()` / 列举规则。
+
+工作区里 `AGENTS.md` 有未提交的任务报告约定，`inference/` 等文件有换行符噪声。
+Phase 8 提交不要把这些文件卷进去。
 
 ## 当前架构
 
 ```
-QML (Main / CameraView)
-  → CameraManager / VisionController
-      → PluginManager → IVisionPlugin → unique_ptr<IDetector>
-      → VisionPipeline
-           CaptureWorker (std::jthread)
-             → BoundedQueue<FramePacket>  DropOldest
-           InferenceWorker (std::jthread)
-             → IDetector::detect
-             → ITracker::update
-             → 【Phase 7 插入 RuleEngine::evaluate】
-             → TrackRenderer / DetectionRenderer
-             → LatestResult<PresentedFrame>
-      → CameraImageProvider → QML
+QML (Main / TitleBar / CameraView)
+  → VisionController (mode / running)
+      → CameraManager
+          PluginManager → IVisionPlugin → unique_ptr<IDetector>
+          VisionPipeline
+            CaptureWorker (jthread)
+              → BoundedQueue<FramePacket>  DropOldest
+            InferenceWorker (jthread)
+              → IDetector::detect
+              → ITracker::update          （生产：ByteTrackTracker）
+              → RuleEngine::evaluate      （生产：空引擎）
+              → TrackRenderer / DetectionRenderer
+              → LatestResult<PresentedFrame>
+              → EventLog（256，DropOldest）
+          CameraImageProvider → QML RGB
 ```
 
-`PresentedFrame` 已有 `detections` 与 `tracks`。QML 仍只吃 RGB 图。
-本阶段不画 ROI / 越线，不做 EventModel / SQLite / 设置页（Phase 8）。
-检测器插件、推理后端、ByteTrack 算法本阶段不动。
+`PresentedFrame` 已有 `detections` / `tracks` / `events`。
+`PipelineStats` 已有跟踪与规则字段。`VisionPipeline::recentEvents()` 可快照 EventLog。
+本阶段不改 ByteTrack 算法、不改四条规则的状态机、不新开规则线程、不把规则做成检测插件。
 
 ## 锁定的设计决策
 
-1. **插入位置**：跟在 InferenceWorker 里，track 之后、render 之前。不新增 jthread，不加第二段帧队列。规则只读 Track（框 + id + 时间），不读像素，不必单独占一个流水线阶段。
-2. **库边界**：新建 `visionlab_analytics`，链 `visionlab_core`，不链 Qt。规则不是插件，不进 `IVisionPlugin` capabilities，不改检测器 / ByteTrackTracker。
-3. **Inside 判定**：目标是否在 ROI 内，用包围框**底边中点**（foot point）：`(box.x + width/2, box.y + height)`。含边界（`cv::pointPolygonTest >= 0` 视为 inside）。不采用中心点或重叠比——人/车贴地，中心点会在脚还在线外时提前触发。
-4. **矩形 ROI**：配置只存多边形（`vector<cv::Point2f>`，至少 3 点）。提供 `polygonFromRect(cv::Rect)` 把矩形变成四顶点，测试用矩形即可。
-5. **越线方向**：有向线段 A→B。点在 AB 左侧（叉积 > 0）为 +，右侧为 −。完整穿越 = 上一帧与本帧异号且都不为 0，且 `prev→curr` 与 `A→B` 相交。
-   - `CrossingDirection::Forward`：+ → −，`message = "A→B"`
-   - `CrossingDirection::Reverse`：− → +，`message = "B→A"`
-   - 落在线上（叉积 == 0）或仅触线不改侧：不记穿越。
-6. **去重**：**只靠状态机发过渡/阈值事件**，不做毫秒级 cooldown。ROI：仅 `outside → inside`。逗留：同一次进入只在达到时长时发一次。越线：每次完成侧向穿越发一次。计数：同一 track 在 IN 集合中时不再 `countIn++`。
-7. **消失的轨迹**：输入列表里没有的 `trackId` 视为离开场景。ROI / 逗留清该 id 状态（不补 Exit 事件）。计数：从 occupancy / IN 集合摘掉，**不**补 OUT。越线：丢掉该 id 的上一帧位置，不发明穿越。
-8. **`IRule` 不接收 `cv::Mat`**：`evaluate(tracks, RuleContext{frameId, timestamp, sourceId})`。规则不碰像素。Lost 轨迹若仍在向量里，用其预测框的脚点。
-9. **eventId**：由 `RuleEngine` 分配，会话内单调递增、不复用；`reset()` 后从 1 再分配。规则返回的事件 `eventId` 可为 0。
-10. **EventLog**：`LatestResult` 是 newest-wins，只把事件挂在 `PresentedFrame` 会丢。pipeline 另设有界 `EventLog`（默认 256，满则 DropOldest，带互斥，供测试与 Phase 8 快照）。`PresentedFrame.events` 仍是**本帧新事件**。
-11. **空引擎**：`RuleEngine*` 为空或引擎内无规则时，行为与现在相同（无事件、新统计为 0）。生产 `CameraManager` 注入空的 `RuleEngine`（没有默认 ROI / 线——没配置就不应报警）。测试可注入具体规则或 FakeRule。
-12. **模式切换 / start**：只在推理线程、下一次 `evaluate` 前 `RuleEngine::reset()`；`VisionPipeline::start()` 在启动 jthread **之前** reset 引擎并清空 EventLog。GUI 的 `setMode` 不得直接调规则。
-13. **本阶段不做**：QML 事件页、ROI 绘制、SQLite、规则热更新、环境变量开关、把规则做成插件、独立 RuleWorker、伪造延迟/FPS。延迟只进 `PipelineStats`，不写 benchmark 可执行文件（那是 Phase 9）。
+1. **四页壳 + 左侧导航**：Monitor / Events / Performance / Settings。保留现有无边框标题栏与中英按钮。窗口仍 1200×900，左侧导航 168px。启停是全局控件（标题栏右侧语言按钮左侧，或导航底部），切到事件页也能停摄像头。检测模式按钮只留在 Monitor。
+2. **QML 不拥有领域对象**：不把 `RuleEngine*` / `IDetector*` / `ITracker*` / `IEventRepository*` 暴露给 QML。QML 只绑 `VisionController` 上的 `QAbstractListModel` / 属性。`CameraManager` 仍只管管线与帧。
+3. **模型更新频率**：
+   - `DetectionModel` / `TrackModel`：在 `CameraManager::notifyFrame`（已 Queued 回 GUI）里从 `latest()` 重建行。只拷领域字段，不拷 `cv::Mat`。
+   - `EventModel`：对 `recentEvents()` 按 `eventId` 做增量 append，禁止每帧 `beginResetModel`。
+   - `PerformanceModel`：`QTimer` **250ms** 调 `statsSnapshot()`，禁止每帧给 QML 发性能信号。
+4. **画面映射**：Monitor 的 `Image.fillMode` 改为 `PreserveAspectFit`（letterbox）。坐标换算用纯函数 `rendering/Letterbox.h`（无 Qt）。禁止继续用 `PreserveAspectCrop` 画 ROI——裁切后鼠标点无法映回帧像素。
+5. **ROI / 线画在 QML 叠加层**，不烧进 `TrackRenderer`。检测框与轨迹 ID 仍由现有 C++ renderer 画在 RGB 上。叠加层只画规则几何（多边形、有向线段）与绘制中的橡皮筋。
+6. **规则变更必须停机**：`RuleEngine::evaluate` / `addRule` / `setEnabled` 与 GUI 并发不安全（Phase 7 契约）。绘制、增删、启用、改逗留秒数都只在 `!isRunning()` 时写入引擎。运行中叠加只读。`start()` 前 `CameraManager` 用当前 `RuleSpec` 列表 `clear` + `addRule` + `setEnabled`。不在本阶段做热更新。
+7. **`RuleSpec` + `makeRule`**：UI 与持久会话状态只持有 `RuleSpec`（值类型）。`analytics/RuleFactory` 把它变成 `unique_ptr<IRule>`。不给 `IRule` 加 QML 字段。不改四条规则的状态机。
+8. **设置里会重建管线的项**：backend / precision / deviceId / confidence / NMS / trackingEnabled。Apply 时若正在运行 → 返回 false，QML 提示先停止。成功路径：`stop` → 按会话设置 `assembleFromPlugins` → 重新注入 `RuleSpec`。本会话有效，**不写回环境变量**（启动仍读 `VISIONLAB_INFERENCE_*` 作为初值）。不提供 INT8（未实现）。
+9. **关闭跟踪**：装配时 `ITracker` 传空。无 tracks 则规则看到空列表，不产生事件。画面回退 `DetectionRenderer`（现有 InferenceWorker 行为）。
+10. **SQLite 用 Qt6::Sql 的 QSQLITE**，新库 `visionlab_storage`，不链 QML。GUI 线程禁止 `INSERT`/`SELECT`。`EventWriter` 用 `std::jthread` + `BoundedQueue<VisionEvent>`（容量 1024，DropOldest）。GUI 在 `notifyFrame` 里对 EventLog 快照做 `eventId` 增量 `enqueue`（不阻塞）。查询只在 writer 线程；结果 `QMetaObject::invokeMethod(..., Qt::QueuedConnection)` 回 GUI。
+11. **EventLog 仍是会话邮箱**：`LatestResult` 会丢帧事件，所以持久化与 EventModel 都读 `recentEvents()`，不读 `latest()->events`。EventLog 容量 256；本阶段不加大。跨 `start()` 时引擎 `eventId` 从 1 再分配——`EventModel` 必须在每次 `start()` 开始新 session（历史行保留，新行不按旧 session 的 eventId 去重）。
+12. **`VisionEvent::timestamp` 仍是 `steady_clock`**，不改领域类型。SQLite 另存 `wall_utc_ms`（insert 时 `system_clock`）。Events 页显示墙钟。`snapshotRef` 本阶段保持空，不写 JPEG。
+13. **保留策略**：表超过 **10000** 行则按 `rowid` 删最旧（DropOldest）。在 writer 线程、insert 之后调用。文档写明，不做成设置项。
+14. **库路径**：`QStandardPaths::AppDataLocation` + `events.sqlite`（组织名/应用名已是 VisionLab）。测试用临时文件。打开失败：打日志，writer 入队即丢，应用不崩溃。
+15. **本阶段不做**：qmltestrunner 全量 QML 套件（Phase 9）；规则 JSON 落盘；事件快照图；独立 RuleWorker；规则热更新；伪造 FPS/延迟；Material 换肤；把 `inference/` 换行噪声与未提交 `AGENTS.md` 塞进提交。
 
-默认值：`LoiterConfig::loiterSeconds = 5.0`。`classIds` 为空表示所有类别。`EventLog` 容量 256。
+默认值：`LoiterConfig::loiterSeconds = 5.0`。`classIds` 空 = 全部类别。性能定时器 250ms。EventWriter 队列 1024。SQLite 上限 10000。Letterbox 用 `PreserveAspectFit` 语义（均匀缩放、居中、可能有黑边）。
 
-放弃的备选：独立 RuleWorker（多一段队列和关机路径，规则本身很便宜）；用检测插件扩展规则（规格要求规则吃 Track，且检测器不知道跟踪器）；在 GUI 线程对 `latest()->tracks` 求值（GUI 禁止跑分析，且会丢帧事件）；时间窗 cooldown 叠在状态机上（V1 过渡事件已够，Phase 8 再加）；inside 用框中心或 IoU（脚点更贴近地面目标）。
+放弃的备选：在 `TrackRenderer` 里画 ROI（无法交互、破坏检测/分析分离）；GUI 线程直接 `addRule`/`evaluate`（数据竞争）；用 `latest()->events` 喂 SQLite（Queued 回调会丢）；`PreserveAspectCrop` 上画线（坐标错）；Qt Sql 连接建在 GUI 线程；为过滤再打 DB（内存 `QSortFilterProxyModel` 即可）；规则热更新（Phase 7 明确推迟）；环境变量与 QSettings 双源写 backend。
 
 ## 推荐执行顺序
 
-`P7-T01 → T02 → T03 → T04 → T05 → T06 → T07 → T08 → T09`
+`P8-T01 → T02 → T03 → T04 → T05 → T06 → T07 → T08 → T09 → T10 → T11 → T12`
 
-T04–T07 在 T03 之后理论上可并行（都只依赖几何原语 + `IRule`）。T08 在 T02 之后即可用 FakeRule 单测，不必等四条真规则。T09 会改 `InferenceWorker` / `VisionPipeline` / `StatsProbe`，必须串行且放在最后。单会话按上列顺序执行。
+T01 / T02 / T03 无互相依赖，理论上可并行。T04–T07 只依赖各自的 C++ 契约。T08 依赖 T03 与 EventLog（已有）。T09 起改 QML，必须串行。T10 依赖 T01+T07+T09。T11 依赖 T05+T08+T09。T12 依赖 T05+T06+T07+T09。单会话按上列顺序执行。
 
 ---
 
-### P7-T01  VisionEvent 领域类型
+### P8-T01  Letterbox 坐标映射
 
-**Task ID:** P7-T01
+**Task ID:** P8-T01
 
-**Task Name:** VisionEvent 领域类型
+**Task Name:** 帧像素 ↔ 控件坐标
 
-**Goal:** 先有可编译、可断言的事件 / 类型枚举 / 规则上下文与引擎统计结构。本任务不写规则算法、不接管线。
+**Goal:** 把 `PreserveAspectFit` 的几何做成可单测纯函数。本任务不改 QML、不画 ROI。
 
 **Files likely affected:**
-- `CMakeLists.txt`（`visionlab_core` 加入 `core/VisionEvent.h`）
-- `tests/CMakeLists.txt`（`tst_visionevent`，Windows PATH 列表加上 `visionevent`）
+- `CMakeLists.txt`（`visionlab_rendering` 加入头/源）
+- `tests/CMakeLists.txt`（`tst_letterbox`，Windows PATH 列表加上 `letterbox`）
 
 **New files:**
-- `core/VisionEvent.h`
-- `tests/VisionEventTest.cpp`
+- `rendering/Letterbox.h`
+- `rendering/Letterbox.cpp`（若无法干净 inline 则需要）
+- `tests/LetterboxTest.cpp`
 
-**Interfaces affected:** 新增（均在 `visionlab` 命名空间）。不改 `Track` / `Detection`。
+**Interfaces affected:**
 
 ```cpp
-enum class EventType : std::uint8_t
+struct Letterbox
+{
+    float offsetX = 0.F;  // 内容区左上角，相对 item
+    float offsetY = 0.F;
+    float contentW = 0.F;
+    float contentH = 0.F;
+    float scale = 1.F;    // item 像素 / 帧像素
+};
+
+Letterbox computeLetterbox(float itemW, float itemH, int frameW, int frameH);
+// item 或 frame 任意边 <= 0 → 全 0。
+
+bool itemToFrame(const Letterbox& box, float itemX, float itemY,
+                 int frameW, int frameH, cv::Point2f& out);
+// 点落在内容区外（含黑边）→ false，不写 out。
+// 否则 out 为帧像素，可含小数；调用方画多边形时再 round。
+
+bool frameToItem(const Letterbox& box, float frameX, float frameY,
+                 cv::Point2f& out);
+// box.scale==0 → false。
+```
+
+无 Qt。检测器 / 跟踪器 / 规则不得 include 本头。
+
+**Implementation outline:**
+- 缩放 `s = min(itemW/frameW, itemH/frameH)`，内容尺寸 `frameW*s` × `frameH*s`，居中。
+- 与 Qt `Image.PreserveAspectFit` 一致（后续 T10 改 fillMode）。
+- 不在本任务改 `CameraView.qml`。
+
+**Risks:**
+- 用 Crop 公式会让 T10 的点击永久偏。
+- 整数帧尺寸与 float item 往返 0.5px；测试用整尺寸，断言误差 `< 1e-3` 或 round-trip 在 0.51px 内。
+
+**Required tests:**
+- 200×100 item、100×100 帧：`offsetX==50`，`offsetY==0`，`scale==1`，`contentW==contentH==100`。
+- item (50,0) → frame (0,0)；item (150,100) → frame (100,100)；item (0,0) 黑边 → false。
+- 正方形 item 装 16:9 帧：上下或左右黑边对称。
+- 非法尺寸全 0，`itemToFrame` false。
+- round-trip：帧内若干点 `frameToItem` 再 `itemToFrame`，误差小。
+
+**Acceptance criteria:**
+- T10 只调用这些函数，不再手写缩放。
+- 生产路径零行为变化。
+
+**Dependencies:** 无。接口变更：是（rendering 内部 API）。并发风险：否。新第三方依赖：否。需测量：否。
+
+**Recommended Git commit message:** `feat(rendering): add PreserveAspectFit letterbox coordinate mapping`
+
+---
+
+### P8-T02  RuleSpec、RuleEngine::clear、makeRule
+
+**Task ID:** P8-T02
+
+**Task Name:** 规则规格与停机重建
+
+**Goal:** UI 只编辑值类型 `RuleSpec`；停机时能清空引擎并按规格重建。不接管线、不改四条状态机。
+
+**Files likely affected:**
+- `analytics/RuleEngine.h` / `.cpp`（`clear`、`ruleIds`）
+- `CMakeLists.txt`（`visionlab_analytics` 加入 RuleSpec / RuleFactory）
+- `tests/CMakeLists.txt`（`tst_rulespec`，PATH 加上 `rulespec`）
+- `tests/RuleEngineTest.cpp`（clear 后 size==0，再 add 仍可用）
+- `docs/analytics/rule-engine.md`（补：配置经 RuleSpec；运行中禁止 mutate；Phase 8 停机 apply）
+
+**New files:**
+- `analytics/RuleSpec.h`
+- `analytics/RuleFactory.h`
+- `analytics/RuleFactory.cpp`
+- `tests/RuleSpecTest.cpp`
+
+**Interfaces affected:**
+
+```cpp
+enum class RuleKind : std::uint8_t
 {
     RoiIntrusion,
     LineCrossing,
@@ -145,730 +230,744 @@ enum class EventType : std::uint8_t
     Counting,
 };
 
-enum class CrossingDirection : std::uint8_t
+struct RuleSpec
 {
-    None,
-    Forward,  // AB 左侧 → 右侧，message "A→B"
-    Reverse,  // AB 右侧 → 左侧，message "B→A"
-};
-
-struct RuleContext
-{
-    std::int64_t frameId = 0;
-    std::chrono::steady_clock::time_point timestamp{};
-    std::string sourceId;
-};
-
-struct VisionEvent
-{
-    std::uint64_t eventId = 0;
-    EventType type = EventType::RoiIntrusion;
     std::string ruleId;
-    std::string sourceId;
-    std::uint64_t trackId = 0;
-    int classId = -1;
-    std::string label;
-    float confidence = 0.0F;
-    cv::Rect box;
-    std::int64_t frameId = 0;
-    std::chrono::steady_clock::time_point timestamp{};
-    std::string message;
-    std::string snapshotRef;  // Phase 8 再填；V1 保持空
-    CrossingDirection direction = CrossingDirection::None;
-    std::uint64_t countIn = 0;
-    std::uint64_t countOut = 0;
-    std::size_t occupancy = 0;
-};
-
-struct RuleEngineStats
-{
-    std::size_t ruleCount = 0;
-    std::size_t enabledRules = 0;
-    std::uint64_t eventsEmitted = 0;
-    double lastEvaluateLatencyMs = 0.0;
-};
-```
-
-`VisionEvent.h` 纯领域，不依赖 Qt。`core` 仍不链接 Qt。不含 `cv::Mat`。
-
-**Implementation outline:**
-- 头文件放 `core/`，与 `Track.h` 同层。
-- 不改 `PresentedFrame`（T09 再加 `events`）。
-- 不引入 `IRule`。
-- 各规则的 `*Config` 放在各自头文件（T04–T07），本任务不预建神类配置头。
-
-**Risks:**
-- 把 `cv::Mat` / 快照图放进 `VisionEvent` 会让 EventLog 与 LatestResult 变重；`snapshotRef` 只保留空字符串占位。
-- `eventId` 用 `int` 长时间运行会溢出；必须 `uint64_t`。
-- 在领域类型里引入 Qt 会破坏 core/QML 隔离。
-
-**Required tests:**
-- 默认 `VisionEvent`：`eventId==0`，`type==RoiIntrusion`，`direction==None`，`snapshotRef.empty()`，`trackId==0`。
-- 默认 `RuleContext`：`frameId==0`，`sourceId.empty()`。
-- 默认 `RuleEngineStats` 全 0。
-- `visionlab_core` 目标仍不链接 Qt。
-
-**Acceptance criteria:**
-- 后续任务只 `#include "core/VisionEvent.h"`，不再发明另一套事件字段名。
-- 生产管线零行为变化。
-
-**Dependencies:** 无。接口变更：是。并发风险：否。新第三方依赖：否。需测量：否。
-
-**Recommended Git commit message:** `feat(core): add VisionEvent domain types for the rule engine`
-
----
-
-### P7-T02  IRule 契约 + FakeRule + 算法文档
-
-**Task ID:** P7-T02
-
-**Task Name:** IRule 契约与规则说明
-
-**Goal:** 把规则扩展点写成可编译契约，并用短文档锁死 inside 判定、四条状态机、去重和管线插入点。本任务不实现四条真规则，不改 InferenceWorker。
-
-**Files likely affected:**
-- `CMakeLists.txt`（新增 `visionlab_analytics`：本任务可以是仅头文件静态库，`LINKER_LANGUAGE CXX`；链 `visionlab_core`，不链 Qt）
-- `tests/CMakeLists.txt`（`tst_irule`，Windows PATH 加上 `irule`）
-
-**New files:**
-- `analytics/IRule.h`
-- `tests/fakes/FakeRule.h`
-- `tests/IRuleTest.cpp`
-- `docs/analytics/rule-engine.md`
-
-**Interfaces affected:**
-
-```cpp
-class IRule {
-public:
-    virtual ~IRule() = default;
-    virtual std::string id() const = 0;
-    virtual std::string name() const = 0;
-    virtual EventType eventType() const = 0;
-    virtual std::vector<VisionEvent> evaluate(
-        const std::vector<Track>& tracks,
-        const RuleContext& context) = 0;
-    virtual void reset() = 0;
-};
-```
-
-线程约定（写进头注释与文档）：同一实例的 `evaluate` / `reset` 不承诺可并发；只由推理线程调用（`start()` 之前的 reset 除外）。`evaluate` 不得修改入参 Track，不得访问像素。启用/禁用由 `RuleEngine` 持有，**不**放进 `IRule`。
-
-`FakeRule`（仅测试）：构造 `explicit FakeRule(std::string id = "fake")`；`id()` 返回该字符串，`name()=="fake"`，`eventType()==RoiIntrusion`；对每个输入 track 产一条事件（拷贝 `trackId` / `classId` / `label` / `confidence` / `box`，填 `ruleId` / `sourceId` / `frameId` / `timestamp` / `message=="fake"`）；空输入返回 `{}`；`reset` 把内部计数清零；另提供 `resetCount()`（仅测试头）供 T09 观察模式切换。用来测引擎与管线接线，不冒充几何规则。T08 挂两条 FakeRule 时用不同 id（如 `"fake"` / `"fake2"`）。
-
-**Implementation outline:**
-- `docs/analytics/rule-engine.md` 必须写清：脚点；`pointPolygonTest>=0` 含边；ROI 只发进入；越线要侧向变号 + 线段相交；逗留按 `RuleContext.timestamp` 秒阈值；计数 IN=Forward / OUT=Reverse、occupancy 为 IN 集合大小、消失不补 OUT；无时间 cooldown；插入点在 InferenceWorker track 之后 render 之前；为何不单独开规则线程；生产默认空引擎；EventLog 256 DropOldest 的理由（LatestResult 会丢稀疏事件）；V1 不画 ROI、无 QML、无 SQLite。
-- 四条规则的状态机在文档里用短列表写死，T04–T07 只实现文档，不再改 `IRule` 签名。
-- 能力列表不要预留 plugin / QML 字段。
-- 不改检测插件、不改 `ITracker`。
-
-**Risks:**
-- `evaluate` 若吃 `FramePacket` 会暗示规则可以写 `image`，破坏只读契约。
-- 文档若留「以后再决定脚点还是中心」，T04/T06 会分叉。
-- FakeRule 若做几何判定，T09 会误以为 ROI 已实现。
-
-**Required tests:**
-- FakeRule：两条 Track → 两条事件，id/box/label 拷自 Track，`ruleId=="fake"`。
-- 空 tracks → 空事件。
-- `reset` 后 `resetCount()==1`。
-- 头文件可被测试 include，且 `visionlab_analytics` 不链接 Qt。
-
-**Acceptance criteria:**
-- T04–T08 只实现文档里的状态机，不再改 `IRule` 签名。
-- 生产路径零行为变化。
-
-**Dependencies:** T01。接口变更：是。并发风险：否（只定契约）。新第三方依赖：否。需测量：否。
-
-**Recommended Git commit message:** `feat(analytics): add IRule contract and rule-engine design notes`
-
----
-
-### P7-T03  几何原语：脚点、多边形、有向越线
-
-**Task ID:** P7-T03
-
-**Task Name:** 规则几何原语
-
-**Goal:** 把四条规则依赖的几何做成可单独测的函数。本任务不写规则状态机，不接管线。
-
-**Files likely affected:**
-- `CMakeLists.txt`（`visionlab_analytics` 加入源文件）
-- `tests/CMakeLists.txt`（`tst_rulegeometry`，Windows PATH 加上 `rulegeometry`）
-
-**New files:**
-- `analytics/RuleGeometry.h`
-- `analytics/RuleGeometry.cpp`（若头文件无法 inline 干净；允许纯头文件）
-- `tests/RuleGeometryTest.cpp`
-
-**Interfaces affected:**
-
-```cpp
-cv::Point2f footPoint(const cv::Rect& box);
-// 空框返回 (0,0)。否则 (x + width/2, y + height)，float。
-
-bool pointInPolygon(const cv::Point2f& point,
-                    const std::vector<cv::Point2f>& polygon);
-// polygon.size()<3 → false。内部用 cv::pointPolygonTest，>=0 为 true（含边）。
-
-std::vector<cv::Point2f> polygonFromRect(const cv::Rect& rect);
-// 四顶点：TL, TR, BR, BL。空矩形仍返回 4 点（可能重合）。
-
-bool segmentsIntersect(const cv::Point2f& p1, const cv::Point2f& p2,
-                       const cv::Point2f& q1, const cv::Point2f& q2);
-// 含端点相触。零长度线段（p1==p2 或 q1==q2）返回 false。
-
-int lineSide(const cv::Point2f& point,
-             const cv::Point2f& a, const cv::Point2f& b);
-// 叉积符号：+1 左，-1 右，0 共线或 AB 零长度。
-
-CrossingDirection classifyCrossing(const cv::Point2f& previous,
-                                   const cv::Point2f& current,
-                                   const cv::Point2f& a,
-                                   const cv::Point2f& b);
-// 上一侧与本侧异号且都不为 0，且 prev-curr 与 A-B 相交 → Forward 或 Reverse。
-// 否则 None。
-```
-
-只用 OpenCV，不引入新库。检测器 / 跟踪器不得 include 本头。
-
-**Implementation outline:**
-- 叉积用 float，近零用绝对阈值（例如 `1e-6`）当作共线，避免 1px 抖成穿越。
-- `classifyCrossing` 是 T05/T07 的唯一越线入口，禁止在规则里再手写一套。
-- 不在本任务写 ROI / 逗留状态机。
-
-**Risks:**
-- 整数 `cv::Rect` 与 float 脚点往返会偏 0.5px；测试用明确矩形，不要像素级咬死 OpenCV 轮廓。
-- 端点相触若算穿越，目标贴线抖动会刷事件——相触只作为 `segmentsIntersect` 的几何事实，`classifyCrossing` 仍要求两侧非 0。
-- AB 重合点会让 `lineSide` 全 0，必须返回 None。
-
-**Required tests:**
-- `footPoint`：`(10,10,20,30)` → `(20, 40)`。
-- 点在正方形内 / 边上 / 外：对应 true / true / false。
-- `<3` 顶点：`pointInPolygon` false。
-- `polygonFromRect` 四点围成的多边形包含矩形中心。
-- 两段交叉相交 true；平行不相交 false；仅端点相触 true；零长度 false。
-- 从 AB 左侧走到右侧且线段相交：`Forward`；反向 `Reverse`；平行于线移动 `None`；走到线上停住 `None`。
-
-**Acceptance criteria:**
-- T04–T07 只组合这些函数，不再手写点在多边形或叉积。
-- 不改检测 / 插件 / 管线。
-
-**Dependencies:** T01（`CrossingDirection`）。接口变更：是（analytics 内部 API）。并发风险：否。新第三方依赖：否。需测量：否。
-
-**Recommended Git commit message:** `feat(analytics): add foot-point and directed-crossing geometry`
-
----
-
-### P7-T04  RoiIntrusionRule
-
-**Task ID:** P7-T04
-
-**Task Name:** ROI 闯入规则
-
-**Goal:** 多边形 ROI 上实现 outside→inside 过渡事件。不接管线、不画框。
-
-**Files likely affected:**
-- `CMakeLists.txt`
-- `tests/CMakeLists.txt`（`tst_roiintrusion`，Windows PATH 加上 `roiintrusion`）
-
-**New files:**
-- `analytics/RoiIntrusionRule.h`
-- `analytics/RoiIntrusionRule.cpp`
-- `tests/RoiIntrusionRuleTest.cpp`
-
-**Interfaces affected:**
-
-```cpp
-struct RoiConfig {
-    std::string ruleId = "roi";
+    RuleKind kind = RuleKind::RoiIntrusion;
+    bool enabled = true;
     std::vector<cv::Point2f> polygon;
-    std::vector<int> classIds;  // 空 = 全部类别
-};
-
-class RoiIntrusionRule final : public IRule {
-public:
-    explicit RoiIntrusionRule(RoiConfig config);
-    std::string id() const override;
-    std::string name() const override;       // "roi-intrusion"
-    EventType eventType() const override;    // RoiIntrusion
-    std::vector<VisionEvent> evaluate(const std::vector<Track>&, const RuleContext&) override;
-    void reset() override;
-};
-```
-
-算法（必须与文档一致）：
-1. `polygon.size()<3`：本帧返回 `{}`（不抛）。
-2. 对每条 track：若 `classIds` 非空且 `classId` 不在其中，视为 outside（并清该 id 的 inside 标记）。
-3. `inside = pointInPolygon(footPoint(track.box), polygon)`。
-4. 若本帧 inside 且上一帧该 `trackId` 不是 inside → 发一条事件（`message=="intrusion"`，填 track 字段与 context）。
-5. 本帧 still inside：不发。outside：不发 Exit。
-6. 本帧列表中没有的 `trackId`：丢掉 inside 标记（再出现算新进入）。
-7. `reset()` 清空全部 inside 标记。
-
-**Implementation outline:**
-- 内部 `unordered_set<uint64_t> m_inside`。
-- 事件 `eventId` 保持 0，交给 T08 分配。
-- 合成 Track，不读真实视频。不链接 Qt。
-
-**Risks:**
-- 用框中心会让测试在「脚在线外、头在内」时误绿——测试必须把脚点明确放在内外。
-- 每帧都发事件会直接违反 DoD；stay 用例必须断言空。
-- 类别过滤失败会让运动块（`kMotionClassId`）误报；测一条 classId 不匹配不发事件。
-
-**Required tests:**
-- 脚点在外：无事件。
-- 外→内：恰好一条，`type==RoiIntrusion`，`trackId` 正确，`message=="intrusion"`。
-- 内停留第三帧：无事件。
-- 内→外：无事件。
-- 再进入：又一条。
-- 多边形 `<3` 点：始终空。
-- `classIds={0}` 而 track `classId==1`：即使脚点在内也不发。
-- 轨迹从列表消失再出现在内：算新进入，发事件。
-- `reset` 后仍在 ROI 内的下一帧：再发一次（视为新会话进入）。
-
-**Acceptance criteria:**
-- 检测器 / ByteTrack 源码零修改。
-- 状态机与文档一致。
-
-**Dependencies:** T02, T03。接口变更：是。并发风险：否。新第三方依赖：否。需测量：否。
-
-**Recommended Git commit message:** `feat(analytics): add ROI intrusion rule with enter-only events`
-
----
-
-### P7-T05  LineCrossingRule
-
-**Task ID:** P7-T05
-
-**Task Name:** 有向越线规则
-
-**Goal:** 用相邻两帧脚点检测真正穿越，区分 A→B 与 B→A。不接管线。
-
-**Files likely affected:**
-- `CMakeLists.txt`
-- `tests/CMakeLists.txt`（`tst_linecrossing`，Windows PATH 加上 `linecrossing`）
-
-**New files:**
-- `analytics/LineCrossingRule.h`
-- `analytics/LineCrossingRule.cpp`
-- `tests/LineCrossingRuleTest.cpp`
-
-**Interfaces affected:**
-
-```cpp
-struct LineConfig {
-    std::string ruleId = "line";
     cv::Point2f a{};
     cv::Point2f b{};
-    std::vector<int> classIds;
-};
-
-class LineCrossingRule final : public IRule {
-public:
-    explicit LineCrossingRule(LineConfig config);
-    std::string id() const override;
-    std::string name() const override;       // "line-crossing"
-    EventType eventType() const override;    // LineCrossing
-    std::vector<VisionEvent> evaluate(const std::vector<Track>&, const RuleContext&) override;
-    void reset() override;
-};
-```
-
-算法：
-1. A==B：本帧 `{}`。
-2. 类别过滤同 T04。
-3. 每个仍在列表中的 track：取本帧脚点。若有上一帧脚点，`classifyCrossing(prev, curr, a, b)`；非 None 则发事件，`direction` 填入，`message` 为 `"A→B"` 或 `"B→A"`。
-4. 本帧首次出现的 track：只记录位置，不发事件。
-5. 列表中消失的 track：删除上一帧位置。
-6. `reset()` 清空位置表。
-
-**Implementation outline:**
-- 内部 `unordered_map<uint64_t, cv::Point2f> m_lastFoot`。
-- 禁止用「框与线段相交」当穿越（规格点名禁止）。
-- 合成水平/垂直移动序列，坐标用整数框换算脚点，避免浮点故事。
-
-**Risks:**
-- 只用当前框是否压线会在贴线停留时每帧报警。
-- 平行于线的移动若因脚点量化抖过线，阈值必须靠 `classifyCrossing` 的共线带。
-- 与 T07 重复实现穿越会分叉——本任务只调 T03。
-
-**Required tests:**
-- 从线左侧走到右侧且路径与 AB 相交：一条 Forward，`message=="A→B"`。
-- 反向：一条 Reverse，`message=="B→A"`。
-- 平行于线、不相交：无事件。
-- 走到线上停住（侧变为 0）：无事件。
-- 同一 track 连续两帧停在同一侧：无事件。
-- 类别不匹配：无事件。
-- 消失后再在对侧出现（中间无连续路径）：无事件（不跨消失发明穿越）。
-- `reset` 后需要重新积累上一帧位置。
-
-**Acceptance criteria:**
-- 方向可测、可区分。
-- 不改跟踪器。
-
-**Dependencies:** T02, T03。接口变更：是。并发风险：否。新第三方依赖：否。需测量：否。
-
-**Recommended Git commit message:** `feat(analytics): add directed line-crossing rule`
-
----
-
-### P7-T06  LoiteringRule
-
-**Task ID:** P7-T06
-
-**Task Name:** 逗留规则
-
-**Goal:** 脚点连续在 ROI 内达到配置秒数后发一次事件。处理离开、再进入、丢失、reset。
-
-**Files likely affected:**
-- `CMakeLists.txt`
-- `tests/CMakeLists.txt`（`tst_loitering`，Windows PATH 加上 `loitering`）
-
-**New files:**
-- `analytics/LoiteringRule.h`
-- `analytics/LoiteringRule.cpp`
-- `tests/LoiteringRuleTest.cpp`
-
-**Interfaces affected:**
-
-```cpp
-struct LoiterConfig {
-    std::string ruleId = "loiter";
-    std::vector<cv::Point2f> polygon;
     std::vector<int> classIds;
     double loiterSeconds = 5.0;
 };
 
-class LoiteringRule final : public IRule {
-public:
-    explicit LoiteringRule(LoiterConfig config);
-    std::string id() const override;
-    std::string name() const override;       // "loitering"
-    EventType eventType() const override;    // Loitering
-    std::vector<VisionEvent> evaluate(const std::vector<Track>&, const RuleContext&) override;
-    void reset() override;
-};
-```
+// nullptr：空 id、未知 kind、ROI/Loiter 顶点 <3、Line/Count 的 A==B、loiterSeconds<=0。
+std::unique_ptr<IRule> makeRule(const RuleSpec& spec);
 
-算法：
-1. 多边形非法或 `loiterSeconds<=0`：返回 `{}`。
-2. 对每个通过类别过滤且 inside 的 track：若无进入时刻，记 `context.timestamp` 为进入时刻，`emitted=false`。若已进入且未 emitted 且 `(context.timestamp - entered) >= loiterSeconds` → 发一条（`message=="loitering"`）并 `emitted=true`。已 emitted 且仍 inside：不发。
-3. outside 或类别不匹配：清该 id 的进入时刻与 emitted。
-4. 列表中消失：清该 id（不补事件，即使已接近阈值）。
-5. Lost 但仍在列表且脚点仍 inside：计时继续（用预测框）。
-6. 离开后再进入：新的进入时刻，可再发一次。
-7. `reset()` 清空全部计时。
-
-时长必须用 `RuleContext.timestamp`，禁止用帧数（帧率不稳）。测试用手工时间戳，不要 sleep。
-
-**Risks:**
-- 用帧计数在丢帧时会提前/推迟触发。
-- 达到阈值后每帧再发会刷屏。
-- 消失后仍保留计时，会导致「人已走、规则还在计」；必须删状态。
-
-**Required tests:**
-- 在内 4s（阈值 5s）：无事件。
-- 第 5s 那一帧：恰好一条。
-- 继续停在内：不再发。
-- 3s 时离开：无事件；再进入后重新从 0 计，满 5s 才发。
-- 再进入满阈值：第二条。
-- 列表中途去掉该 track：无事件，再给一个 inside 的新序列需重新满阈值。
-- `reset` 清计时。
-- 手工时间戳，测试中禁止 `sleep`。
-
-**Acceptance criteria:**
-- 与 ROI 闯入是两个类、两份测试；逗留不复用 `RoiIntrusionRule` 的 inside 集合（各自维护）。
-- 不接管线。
-
-**Dependencies:** T02, T03。接口变更：是。并发风险：否。新第三方依赖：否。需测量：否。
-
-**Recommended Git commit message:** `feat(analytics): add loitering rule with timestamp threshold`
-
----
-
-### P7-T07  CountingRule
-
-**Task ID:** P7-T07
-
-**Task Name:** 过线计数规则
-
-**Goal:** 在有向越线上做 IN / OUT 计数与 occupancy。同一 track 在 IN 集合中不重复 IN。消失不补 OUT。
-
-**Files likely affected:**
-- `CMakeLists.txt`
-- `tests/CMakeLists.txt`（`tst_counting`，Windows PATH 加上 `counting`）
-
-**New files:**
-- `analytics/CountingRule.h`
-- `analytics/CountingRule.cpp`
-- `tests/CountingRuleTest.cpp`
-
-**Interfaces affected:**
-
-```cpp
-struct CountConfig {
-    std::string ruleId = "count";
-    cv::Point2f a{};
-    cv::Point2f b{};
-    std::vector<int> classIds;
-};
-
-class CountingRule final : public IRule {
-public:
-    explicit CountingRule(CountConfig config);
-    std::string id() const override;
-    std::string name() const override;       // "counting"
-    EventType eventType() const override;    // Counting
-    std::vector<VisionEvent> evaluate(const std::vector<Track>&, const RuleContext&) override;
-    void reset() override;
-    std::uint64_t countIn() const;
-    std::uint64_t countOut() const;
-    std::size_t occupancy() const;          // IN 集合大小
-};
-```
-
-算法：
-1. 用与 T05 相同的上一帧脚点 + `classifyCrossing`。
-2. Forward 且 `trackId` **不在** IN 集合：`countIn++`，加入集合，发 Counting 事件（`direction==Forward`，`message=="IN"`，填当前 `countIn/countOut/occupancy`）。
-3. Reverse 且 **在** IN 集合：`countOut++`，移出集合，发事件（`message=="OUT"`）。
-4. Forward 但已在 IN 集合：不发、不 `countIn++`（防抖/双计）。
-5. Reverse 但不在 IN 集合：不发、不 `countOut++`（没进过线的出场忽略）。
-6. 列表中消失：从 IN 集合摘掉，occupancy 下降，**不** `countOut++`、不发 OUT。
-7. `reset()`：计数器与集合与位置表全清。
-
-不组合 `LineCrossingRule` 对象（避免双重状态）；只复用 T03 函数。两条规则可同时挂在引擎上，互不共享内部 map。
-
-**Risks:**
-- 「避免双计」理解成「一生只计一次」会让往返过门失败——锁的是 IN 集合滞后，不是终身禁计。
-- 消失补 OUT 会把「走出画面」当成出门。
-- 与 T05 各写一套穿越判定会不一致。
-
-**Required tests:**
-- 一次 Forward：`countIn==1`，`occupancy==1`，一条 IN 事件。
-- 再一次同向抖过线但仍在 IN 集：计数不变。
-- Reverse：`countOut==1`，`occupancy==0`，一条 OUT。
-- 同一 track IN→OUT→IN：`countIn==2`，`countOut==1`。
-- 两条 track 先后 IN：`countIn==2`，`occupancy==2`。
-- IN 之后从列表删除：`occupancy==0`，`countOut` 仍为 0，无新事件。
-- `reset` 后计数为 0。
-
-**Acceptance criteria:**
-- occupancy 可从规则实例读到，也出现在事件字段里。
-- 不改 ByteTrack。
-
-**Dependencies:** T02, T03。接口变更：是。并发风险：否。新第三方依赖：否。需测量：否。
-
-**Recommended Git commit message:** `feat(analytics): add directional counting with occupancy`
-
----
-
-### P7-T08  RuleEngine
-
-**Task ID:** P7-T08
-
-**Task Name:** RuleEngine 注册、启用与求值
-
-**Goal:** 拥有规则列表，只对启用项求值，分配 `eventId`，汇总统计。本任务可用 FakeRule 测完；不接管线。
-
-**Files likely affected:**
-- `CMakeLists.txt`
-- `tests/CMakeLists.txt`（`tst_ruleengine`，Windows PATH 加上 `ruleengine`）
-
-**New files:**
-- `analytics/RuleEngine.h`
-- `analytics/RuleEngine.cpp`
-- `tests/RuleEngineTest.cpp`
-
-**Interfaces affected:**
-
-```cpp
 class RuleEngine {
-public:
-    bool addRule(std::unique_ptr<IRule> rule);
-    // nullptr 或空 id 或 id 重复 → false，不接管所有权（重复时销毁传入对象或在失败路径 drop unique_ptr）。
-    // 成功则默认 enabled=true。
-
-    bool setEnabled(std::string_view ruleId, bool enabled);
-    bool isEnabled(std::string_view ruleId) const;
-    std::size_t size() const;
-
-    std::vector<VisionEvent> evaluate(
-        const std::vector<Track>& tracks,
-        const RuleContext& context);
-
-    void reset();
-    RuleEngineStats stats() const;
+    void clear();                          // 丢掉全部规则；eventId 下次从 1；不抛
+    std::vector<std::string> ruleIds() const; // 注册顺序
+    // 现有 addRule / setEnabled / evaluate / reset / stats 不变
 };
 ```
 
-行为：
-1. `evaluate`：按注册顺序对 enabled 规则调用；某条规则抛 `cv::Exception` 则记下日志、该规则本帧贡献 `{}`，**继续**其它规则，引擎不把异常甩给 worker。
-2. 拼接后的事件：按顺序把 `eventId` 设为 1,2,3…（会话累计，不是每帧从 1）。`eventsEmitted` 为已分配的累计个数。
-3. 规则返回里已有非 0 `eventId` 也覆盖为引擎分配值（Fake/真规则都应被覆盖）。
-4. `lastEvaluateLatencyMs` 为这次 `evaluate` 墙钟（含所有规则）。
-5. `reset()`：对每条规则 `reset()`，id 生成器回到 1，`eventsEmitted=0`，`lastEvaluateLatencyMs=0`；**不**删除规则，不改变 enabled。
-6. 同一实例不承诺可并发 `evaluate`/`addRule`。无内部互斥（T09 的 EventLog 才有锁）。
-7. 无规则：`evaluate` 返回 `{}`，耗时可记 0。
+`makeRule` 按 kind 构造现有四类，拷贝对应 Config 字段。`enabled` 不放进 `IRule`，由引擎 `setEnabled` 负责。
 
 **Implementation outline:**
-- 内部结构体 `{ unique_ptr<IRule> rule; bool enabled; }` 的 vector。
-- `stats().ruleCount = size()`，`enabledRules` 为 enabled 个数。
-- 测试同时挂两条 FakeRule：`FakeRule{"fake"}` 与 `FakeRule{"fake2"}`（构造已在 T02 锁定）。
-- 本任务不创建 EventLog。
+- `clear()`：`m_entries.clear()`，然后与 `reset()` 相同地清计数器。
+- `makeRule` 只 include 四条规则头；`RuleEngine.cpp` 仍不 include 它们。
+- 不改 `RoiIntrusionRule` 等算法。
 
 **Risks:**
-- 一条规则抛异常若中止整个 evaluate，其它规则会哑火；必须隔离。
-- 在引擎里加锁再让 worker 同线程 evaluate 会无意义地复杂化；锁留给 EventLog。
-- 重复 id 若覆盖旧规则，测试与 Phase 8 配置会难以推理——失败更安全。
+- `clear` 若在运行中调用会与 `evaluate` 竞态——本任务单测只在单线程调用；文档写明仅停机。
+- 把 `enabled` 塞进 `IRule` 会破坏 Phase 7 契约。
 
 **Required tests:**
-- 空引擎：事件空，`ruleCount==0`。
-- 一条 FakeRule + 一条 track：一条事件，`eventId==1`，`eventsEmitted==1`。
-- 第二帧再一条：`eventId==2`。
-- 两条不同 id 的 FakeRule：一帧两条事件，id 为 1 和 2，顺序为注册顺序。
-- `setEnabled(id,false)` 后该规则不再出事件；再启用恢复。
-- 重复 id：`addRule` false，`size` 仍为 1。
-- `reset` 后下一事件 `eventId==1`，且 FakeRule `resetCount` 增加。
-- 禁用不影响 `size()`，只减 `enabledRules`。
+- 合法 ROI spec → `makeRule` 非空，`id()/eventType()` 正确；脚点外→内仍一条事件（可复用合成 Track）。
+- 顶点 <3、空 id、A==B、`loiterSeconds==0` → nullptr。
+- `addRule` 两条后 `ruleIds` 顺序一致；`clear` 后 `size()==0`、`ruleIds` 空；再 add + evaluate，新事件 `eventId==1`。
+- `RuleEngineTest` 旧用例仍绿。
 
 **Acceptance criteria:**
-- 引擎不 `#include` 检测器 / 跟踪器实现头（可以 include `core/Track.h`）。
-- 无 Qt。
+- 后续 UI 只存 `vector<RuleSpec>`，不再手 new 四类规则（测试 FakeRule 除外）。
+- 检测器 / ByteTrack 源码零修改。
 
-**Dependencies:** T02（T04–T07 可选，本任务不强制）。接口变更：是。并发风险：否（单线程单元测试）。新第三方依赖：否。需测量：否。
+**Dependencies:** 无（Phase 7 已有 IRule）。接口变更：是。并发风险：否（单测）。新第三方依赖：否。需测量：否。
 
-**Recommended Git commit message:** `feat(analytics): add RuleEngine with enable flags and event ids`
+**Recommended Git commit message:** `feat(analytics): add RuleSpec factory and RuleEngine::clear`
 
 ---
 
-### P7-T09  管线插入：EventLog、统计、生产空引擎
+### P8-T03  IEventRepository + SQLite
 
-**Task ID:** P7-T09
+**Task ID:** P8-T03
 
-**Task Name:** 在 InferenceWorker 接入 RuleEngine
+**Task Name:** SQLite 事件仓储
 
-**Goal:** 推理线程在 track 之后求值规则；本帧事件进入 `PresentedFrame.events`；历史进入有界 EventLog；指标进入 `PipelineStats`。生产注入空 `RuleEngine`。模式变化时在推理线程 `reset`。本任务仍不画 ROI。
+**Goal:** 可插入、查询、过滤、超限裁剪的事件库。本任务不接管线、不写 QML。
 
 **Files likely affected:**
-- `core/PresentedFrame.h`（增加 `std::vector<VisionEvent> events`）
-- `core/PipelineStats.h`（增加 `eventsEmitted` / `enabledRules` / `avgRuleLatencyMs`）
-- `pipeline/EventLog.h` / `.cpp`（新）
-- `pipeline/InferenceWorker.h` / `.cpp`
-- `pipeline/VisionPipeline.h` / `.cpp`
-- `pipeline/StatsProbe.h` / `.cpp`
-- `utilities/CameraManager.cpp`（组装时 `make_unique<RuleEngine>()`，注释：生产无默认 ROI）
-- `utilities/CameraManager.h`（注释：pipeline 拥有 RuleEngine 与 EventLog）
-- `docs/analytics/rule-engine.md`（补生产接线、reset 时机、EventLog、与插件/跟踪的边界）
-- `tests/InferenceWorkerTest.cpp`
-- `tests/VisionPipelineTest.cpp`
-- `tests/StatsProbeTest.cpp`
-- `tests/PipelineLifecycleTest.cpp`（start/stop 后 EventLog 空、规则 reset）
-- `CMakeLists.txt`（`visionlab_pipeline` 链接 `visionlab_analytics`；`EventLog` 加入 pipeline 目标）
-- `tests/CMakeLists.txt`（`tst_eventlog`，Windows PATH 加上 `eventlog`）
+- 根 `CMakeLists.txt`：`find_package(Qt6 REQUIRED COMPONENTS ... Sql)`；新静态库 `visionlab_storage`（链 `visionlab_core` + `Qt6::Sql`，不链 Quick/Qml）
+- `tests/CMakeLists.txt`（`tst_eventrepository`，PATH 加上 `eventrepository`）
 
 **New files:**
-- `pipeline/EventLog.h`
-- `pipeline/EventLog.cpp`
-- `tests/EventLogTest.cpp`
+- `storage/IEventRepository.h`
+- `storage/EventQuery.h`
+- `storage/SqliteEventRepository.h`
+- `storage/SqliteEventRepository.cpp`
+- `tests/EventRepositoryTest.cpp`
 
 **Interfaces affected:**
 
-`PresentedFrame` 增加 `events`，默认空。`detections` / `tracks` 保留。
-
-`PipelineStats` 增加：
-
 ```cpp
-std::uint64_t eventsEmitted = 0;
-std::size_t enabledRules = 0;
-double avgRuleLatencyMs = 0.0;
-```
+struct EventQuery
+{
+    std::optional<EventType> type;
+    std::uint64_t afterRowId = 0;
+    std::size_t limit = 500;
+};
 
-`EventLog`：
+struct StoredEvent
+{
+    std::int64_t rowId = 0;
+    std::int64_t wallUtcMs = 0;
+    VisionEvent event;
+};
 
-```cpp
-class EventLog {
+class IEventRepository {
 public:
-    explicit EventLog(std::size_t capacity = 256);
-    void push(const std::vector<VisionEvent>& events);  // 逐条追加，超容量 pop_front
-    std::vector<VisionEvent> snapshot() const;          // 值拷贝
-    void reset();
-    std::size_t size() const;
+    virtual ~IEventRepository() = default;
+    virtual bool open(const std::filesystem::path& dbPath) = 0;
+    virtual bool insert(const VisionEvent& event, std::int64_t wallUtcMs) = 0;
+    virtual std::vector<StoredEvent> query(const EventQuery& query) const = 0;
+    virtual void prune(std::size_t maxRows) = 0;
+    virtual std::size_t count() const = 0;
+    virtual void close() = 0;
 };
 ```
 
-内部一把 `mutex`，与 `StatsProbe` 相同：推理线程写，任意线程 snapshot。
+Schema（`IF NOT EXISTS`）：
 
-`StatsProbe::onRuled(const RuleEngineStats& stats, double ruleLatencyMs)`：同一把 `m_mutex` 覆盖写入 `eventsEmitted` / `enabledRules`，单独 `LatencyWindow` 记规则耗时。`snapshot()` 填 `avgRuleLatencyMs`。`reset()` 清零新字段。无规则时 worker 不调用 `onRuled`，新字段保持 0。
-
-`InferenceWorker` 构造在现有默认参数**之后**增加 `RuleEngine* rules = nullptr`、`EventLog* events = nullptr`。旧测试不用改调用。
-
-求值时机：
-- tracker 块结束之后、render 之前。
-- 无 tracker 时 `presented.tracks` 为空，规则仍可 evaluate（得到空或 Fake 空）。
-- `m_rules` 非空且 `m_mode` 非空：mode 变化时**先** `m_tracker->reset()`（若有）**再** `m_rules->reset()`，然后 update / evaluate。
-- `evaluate` 包在 try/catch（`cv::Exception`，与 detect/track 相同）：异常则 `presented.events.clear()`，打日志，worker 不得退出。引擎内部已隔离单条规则异常；此处防引擎本身抛出。
-- 成功后：`presented.events = ...`；若 `m_eventLog` 非空则 `push`；`onRuled`。
-- `IRule*` / 引擎为空：不调用，`events` 保持空。
-
-`VisionPipeline` 构造增加第五参数 `std::unique_ptr<RuleEngine> rules = {}`。`EventLog` 是**值成员**（不是 `unique_ptr`），避免与 `EventLog::reset()` 混淆。成员声明：`m_rules` 与 `m_eventLog` 活得比 worker 长（先声明，`joinWorkers` 仍先 `reset` worker）。`start()` 在启动 jthread 前：`m_tracker->reset()`（若有）、`m_rules->reset()`（若有）、`m_eventLog.reset()` 清空日志。把 `m_rules.get()` 与 `&m_eventLog` 传给 worker。提供 `std::vector<VisionEvent> recentEvents() const` → `m_eventLog.snapshot()`。
-
-禁止在 `VisionPipeline::setMode` 里直接 `m_rules->reset()`。
-
-`CameraManager::assembleFromPlugins`：
-
-```cpp
-std::make_unique<VisionPipeline>(
-    std::move(source), std::move(detectors),
-    VisionPipeline::kDefaultQueueCapacity,
-    std::make_unique<ByteTrackTracker>(),
-    std::make_unique<RuleEngine>());
+```sql
+CREATE TABLE events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  wall_utc_ms INTEGER NOT NULL,
+  pipeline_event_id INTEGER NOT NULL,
+  type INTEGER NOT NULL,
+  rule_id TEXT,
+  source_id TEXT,
+  track_id INTEGER,
+  class_id INTEGER,
+  label TEXT,
+  confidence REAL,
+  box_x INTEGER, box_y INTEGER, box_w INTEGER, box_h INTEGER,
+  frame_id INTEGER,
+  message TEXT,
+  snapshot_ref TEXT,
+  direction INTEGER,
+  count_in INTEGER,
+  count_out INTEGER,
+  occupancy INTEGER
+);
+CREATE INDEX idx_events_type ON events(type);
 ```
 
-不注册任何 ROI / 线。不加 QML property，不加 `VISIONLAB_RULES` 环境变量。
-
-Grep：`detectors/` 与 `plugins/` 与 `tracking/` 不得出现 `IRule` / `RuleEngine` / `VisionEvent`（`Track.h` 除外的 analytics 依赖）。
+`pipeline_event_id` 不是跨会话主键。`snapshot_ref` 存空串。
 
 **Implementation outline:**
-- 注释改成：跟踪与规则都在本线程、detect 与 render 之间，规则在 track 之后。
-- 本任务不改 DetectionRenderer / TrackRenderer / QML。
-- `onInferred` 语义不变：规则耗时不计入 `avgInferenceLatencyMs`。
-- 禁止在测试里写死「必须 < X ms」。
-- 工作区里未提交的 inference 换行改动不要 `git add`。
+- 每个 `SqliteEventRepository` 实例只在**一个**线程上使用（T08 writer）。连接不要设成默认连接名抢全局。
+- `open` 失败返回 false。`query` 在未打开时返回 `{}`。
+- `prune(maxRows)`：`count() > maxRows` 时 `DELETE ... ORDER BY id ASC LIMIT extra`。
+- 不引入独立 sqlite3 发行包。
 
 **Risks:**
-- GUI `setMode` 与推理 `evaluate` 并发：规则内部无锁。必须把 reset 放在推理线程。
-- Worker 持有 `RuleEngine*` 而 pipeline 先毁引擎：UAF。所有权只在 pipeline。
-- 只把事件放在 PresentedFrame：UI 丢帧即丢事件。EventLog 是本阶段为 Phase 8 留下的最小邮箱。
-- 把第五个构造参数插到中间会弄断现有四参数调用。
-- 生产若默认塞一个屏幕大 ROI，相机会无配置报警。
+- 无 QSQLITE 驱动时测试会假红——`QSqlDatabase::isDriverAvailable("QSQLITE")` 为 false 则 `QSKIP`。
+- 在 GUI 线程用这个类会违反 DoD；本任务测试在 Qt Test 主线程调用是允许的，T08 再搬到 jthread。
+- 损坏文件：`open` false，不抛给调用方。
 
 **Required tests:**
-- EventLog：push 3 条 size==3；push 300 条容量 256 时 size==256 且 snapshot 含最后一条、不含最早那条；`reset` 后空；并发 push/snapshot 不崩（可短跑，与 StatsProbe 的 concurrent 用例同级）。
-- StatsProbe：空探针新字段为 0；`onRuled` 两次 `eventsEmitted` 取最后一次传入的累计值；`avgRuleLatencyMs` 对 10 和 30 为 20；`reset` 后新字段为 0；旧用例仍绿。
-- InferenceWorker 无规则：`presented.events.empty()`，detections/tracks 与现在一致。
-- InferenceWorker + FakeTracker + FakeRule：有检测时 `events.size()==tracks.size()`，`recent` 路径：worker 的 EventLog size>0。
-- 空 detections：FakeRule 空，events 空。
-- 切换 mode：FakeRule `resetCount` 增加（与 tracker reset 同一帧逻辑）。
-- VisionPipeline + FakeDetector + FakeTracker + FakeRule：若干帧后 `latest()->events` 非空，且 `recentEvents()` 非空。
-- VisionPipeline 无规则指针（默认）：`events` 空，行为与 Phase 6 相同。
-- start/stop/start：EventLog 空，下一事件 `eventId==1`（引擎 reset）。
-- 可选一条接近生产的装配：ByteTrackTracker + 空 RuleEngine + FakeDetector，不要求 GPU，只断言不崩且 `events.empty()`。
-- 现有 InferenceWorker / VisionPipeline / overload / lifecycle / cameramanager 测试仍绿。
-- 全量 ctest：默认 CPU 构建，无 GPU 项不得无故变红。
+- 临时路径 `open` true；insert 3 条 `count==3`；`query` 默认按 `id` 升序。
+- `EventQuery.type == LineCrossing` 只返回该类型。
+- `afterRowId` + `limit` 分页。
+- insert 10005 条后 `prune(10000)`，`count==10000`，最小 `pipeline_event_id` 已不是最早那条。
+- 目录不可写或空路径：`open` false。
+- 驱动不可用：`QSKIP`。
 
-**Acceptance criteria（对照 Phase 7 DoD）：**
-- `IRule` 存在（T02）。
-- RuleEngine 不依赖检测器/跟踪器实现（T08）。
-- ROI / 越线 / 逗留 / 计数有单测（T04–T07）；本任务把引擎接到管线。
-- 事件去重由规则状态机保证，管线不每帧复制状态报警。
-- 规则可配置（构造期 Config；生产为空，测试注入）。
-- GUI 不跑 `evaluate`；不新开线程。
-- UI 仍不展示事件列表（Phase 8）；本阶段用测试读 `latest()->events` / `recentEvents()`。
-- 文档写清四条状态机（T02 已写，本任务补接线）。
+**Acceptance criteria:**
+- `visionlab_storage` 不链 Qt Quick / Qml。
+- `core/` 不 include `storage/`。
 
-**Dependencies:** T08；管线 Fake 路径不强制 T04–T07，但本阶段收口前 T04–T07 应已绿。接口变更：是。并发风险：是（EventLog / StatsProbe / mode reset）。新第三方依赖：否。需测量：否（只记录，不设门槛）。
+**Dependencies:** 无。接口变更：是。并发风险：否（单线程单测）。新第三方依赖：是（Qt6::Sql，随 Qt 安装）。需测量：否。
 
-**Recommended Git commit message:** `feat(pipeline): evaluate rules after track and keep a bounded event log`
+**Recommended Git commit message:** `feat(storage): add SQLite event repository with prune and query`
+
+---
+
+### P8-T04  DetectionModel + TrackModel
+
+**Task ID:** P8-T04
+
+**Task Name:** 检测 / 轨迹列表模型
+
+**Goal:** QML 可绑的只读列表。本任务不改 QML 文件、不接 CameraManager。
+
+**Files likely affected:**
+- 根 `CMakeLists.txt` `qt_add_qml_module(appVisionLab)` 的 `SOURCES` 可先不加入（未接线）；测试可执行文件直接编译这两个 cpp
+- `tests/CMakeLists.txt`（`tst_detectionmodel`、`tst_trackmodel`，PATH 加上二者）
+
+**New files:**
+- `models/DetectionModel.h` / `.cpp`
+- `models/TrackModel.h` / `.cpp`
+- `tests/DetectionModelTest.cpp`
+- `tests/TrackModelTest.cpp`
+
+**Interfaces affected:**
+
+`DetectionModel` 与 `TrackModel` 均为 `QAbstractListModel`。
+
+共同行为：`void setItems(...)` 在 GUI 线程调用；内部 `beginResetModel`/`endResetModel`（T04 行数通常 <100，可接受）。`rowCount` / `data` / `roleNames`。
+
+Detection roles（字符串名给 QML）：`classId`, `label`, `confidence`, `x`, `y`, `width`, `height`。
+
+Track roles：上列 + `trackId`, `state`（int，`TrackState`）, `age`。不把整个 `trajectory` 暴露为 QVariantList（轨迹已画在 RGB 上）。
+
+```cpp
+void DetectionModel::setDetections(const std::vector<Detection>&);
+void TrackModel::setTracks(const std::vector<Track>&);
+```
+
+**Implementation outline:**
+- 存 `QVector` 的 POD 拷贝（int/float/QString/QRect），不要持有 `cv::Mat`。
+- 空 vector → 0 行。
+- 不注册为 QML 可创建类型；T09 由 `VisionController` 当 QObject 子对象暴露。
+
+**Risks:**
+- 把 `PresentedFrame.rgb` 放进模型会每帧大拷贝。
+- 从非 GUI 线程 `setItems` 会违反模型线程规则——头注释写明仅 GUI；测试在 Qt Test 主线程调用。
+
+**Required tests:**
+- 默认 0 行。
+- 两条 Detection：`rowCount==2`，`label`/`box`/`confidence` 与输入一致。
+- 再 `setDetections` 一条：`rowCount==1`。
+- 空列表清空。
+- Track：`trackId` 与 `state` 正确；Tentative/Confirmed/Lost 可区分。
+- `roleNames` 含上述键。
+
+**Acceptance criteria:**
+- 模型 cpp 不 include `RuleEngine` / 插件实现头。
+- 现有管线测试仍绿。
+
+**Dependencies:** 无。接口变更：是（app 层）。并发风险：否（约定 GUI）。新第三方依赖：否。需测量：否。
+
+**Recommended Git commit message:** `feat(ui): add DetectionModel and TrackModel list models`
+
+---
+
+### P8-T05  EventModel + PerformanceModel
+
+**Task ID:** P8-T05
+
+**Task Name:** 事件增量模型与性能快照
+
+**Goal:** 事件按 session 增量追加；性能字段可被 250ms 定时器写入。本任务不启 QTimer、不写 QML 页。
+
+**Files likely affected:**
+- `tests/CMakeLists.txt`（`tst_eventmodel`、`tst_performancemodel`）
+
+**New files:**
+- `models/EventModel.h` / `.cpp`
+- `models/PerformanceModel.h` / `.cpp`
+- `models/EventTypeFilterModel.h` / `.cpp`（`QSortFilterProxyModel`，按 `EventType` 过滤；`typeFilter` 为 -1 表示全部）
+- `tests/EventModelTest.cpp`
+- `tests/PerformanceModelTest.cpp`
+
+**Interfaces affected:**
+
+```cpp
+class EventModel : public QAbstractListModel {
+    void beginSession();  // start() 时调用；之后 ingest 视为新 session
+    void ingest(const std::vector<VisionEvent>& snapshot,
+                const std::vector<StoredEvent>& history = {});
+    // history 仅 beginSession 后第一次用于预填 DB 行（rowId 角色）；之后只处理 snapshot。
+};
+
+class PerformanceModel : public QObject {
+    Q_PROPERTY(double captureFps READ ...) // 与 PipelineStats 同名的一组 READ 属性
+    void update(const PipelineStats& stats);
+};
+```
+
+Event roles：`sessionEventId`, `rowId`, `wallUtcMs`, `type`, `ruleId`, `trackId`, `label`, `confidence`, `message`, `direction`, `countIn`, `countOut`, `occupancy`, `frameId`。
+
+`ingest(snapshot)`：对当前 session，只 append `eventId` 大于本 session 已见最大 id 的行。`beginSession` 不清空已有行（历史保留），只重置「本 session 已见 max id」为 0。
+
+`EventTypeFilterModel::setTypeFilter(int)`：-1 全部，否则 `VisionEvent.type` 的整值。
+
+`PerformanceModel::update` 写属性，有变化才 `emit xxxChanged`。无 Timer。
+
+**Implementation outline:**
+- EventModel 用 `beginInsertRows` 追加，禁止每帧 reset。
+- `wallUtcMs`：来自 `StoredEvent` 用其值；来自直播 `VisionEvent` 用 ingest 时刻的 `QDateTime::currentMSecsSinceEpoch()`（同一 snapshot 内共用一个墙钟，避免同帧多事件时钟乱跳）。
+- Performance 属性覆盖 Phase 7 已有字段（含 `eventsEmitted` / `avgRuleLatencyMs` / 跟踪计数）。
+
+**Risks:**
+- 用 `eventId` 跨 start 去重会把新会话 id=1 当成重复而丢事件——必须 `beginSession`。
+- 每帧 reset EventModel 会卡 UI。
+
+**Required tests:**
+- snapshot 两条 id 1,2 → 两行；再 ingest 含 1,2,3 → 只有第三行插入，`rowCount==3`。
+- `beginSession` 后再 ingest id=1 → 再增一行（不与上一 session 的 id=1 去重）。
+- 空 snapshot 不改 rowCount。
+- filter：只显示 `Loitering` 时源有 3 类各一条 → proxy `rowCount==1`。
+- Performance：默认全 0；`update` 写入 captureFps 等；相同值不重复 emit（可用 QSignalSpy）。
+
+**Acceptance criteria:**
+- 不 include 检测器实现。
+- 不在本任务创建 QTimer。
+
+**Dependencies:** T03 仅当 `ingest` 预填 `StoredEvent`（结构在 T03）；若 T03 未做，history 参数可先只在头文件用前向声明，但执行顺序已要求 T03 在前。接口变更：是。并发风险：否。新第三方依赖：否。需测量：否。
+
+**Recommended Git commit message:** `feat(ui): add EventModel ingest and PerformanceModel snapshot`
+
+---
+
+### P8-T06  会话推理设置与停机重建管线
+
+**Task ID:** P8-T06
+
+**Task Name:** Settings 用的管线重建 API
+
+**Goal:** 停机时可改 backend / precision / device / confidence / NMS / tracking，并重建 `VisionPipeline`。运行中拒绝。不写 Settings QML。
+
+**Files likely affected:**
+- `plugin/DetectorCreateRequest.h`（增加 `confidenceThreshold`、`nmsThreshold`，默认 0.25 / 0.45）
+- `plugins/yolo/YoloVisionPlugin.cpp`（写入 `ModelConfig`）
+- `utilities/CameraManager.h` / `.cpp`
+- `inference/InferenceSelection.h` 不强制改；会话结构放 `utilities/SessionSettings.h` 或 `CameraManager.h`
+- `tests/CameraManagerTest.cpp`
+- `tests/CMakeLists.txt`（`tst_pluginmodel`）
+- Face/Motion 插件忽略新字段（已忽略 backend）
+
+**New files:**
+- `models/PluginModel.h` / `.cpp`
+- `utilities/SessionSettings.h`（若未放进 CameraManager）
+- `tests/PluginModelTest.cpp`
+
+**Interfaces affected:**
+
+```cpp
+struct SessionSettings {
+    InferenceSelection inference;          // 启动时 = inferenceSelectionFromEnv()
+    float confidenceThreshold = 0.25F;
+    float nmsThreshold = 0.45F;
+    bool trackingEnabled = true;
+};
+
+class CameraManager {
+    SessionSettings sessionSettings() const;
+    // running → false，不改动。
+    // 否则 stop（若曾运行）、assembleFromPlugins 用新设置、重新 apply 已存 RuleSpec（T07 才有规则；本任务无 spec 则空引擎）。
+    bool applySessionSettings(const SessionSettings& settings);
+
+    PluginManager 只读：供 PluginModel 刷新
+};
+
+class PluginModel : public QAbstractListModel {
+    void setPlugins(const std::vector<PluginMetadata>&,
+                    const std::vector<std::string>& errors);
+    // roles: pluginId, name, version, description, modeLabel, capabilities
+};
+```
+
+`assembleFromPlugins`：`DetectorCreateRequest` 填入 session 的 backend/precision/device/confidence/nms。`trackingEnabled==false` 时 tracker 传 `{}`，否则 `ByteTrackTracker`。仍注入 `make_unique<RuleEngine>()`。
+
+**Implementation outline:**
+- 构造时 `m_session = inferenceSelectionFromEnv()` + 默认阈值。
+- 不写环境变量、不写 QSettings（语言仍由 LocaleController 持久化）。
+- PluginModel 由 CameraManager 在 scan 后填充；Dummy 的 mode 空，modeLabel 空字符串。
+
+**Risks:**
+- 运行中 assemble 会与 jthread 竞态——必须先 `stop`，且 `apply` 在 running 时直接 false（调用方应先停；API 仍 double-check）。
+- 重建失败导致 CameraManager 无 pipeline：assemble 保持现有行为（缺插件则缺模式），不要留下空 unique_ptr 却 `isRunning` true。
+- 把 confidence 做成 YOLO 运行时 setter 会碰到推理线程——禁止，必须重建检测器。
+
+**Required tests:**
+- PluginModel：两条 metadata → 两行，id/name 正确。
+- CameraManager：注入 Fake 管线 running 时 `applySessionSettings` false，mode 仍 Face。
+- 停机后 `trackingEnabled=false` 再 start：不要求 GPU；断言 `stats().activeTracks==0` 且有检测仍能出帧（FakeDetector + FakeVideoSource 的现有测试风格）。
+- `DetectorCreateRequest` 默认阈值与现在 YOLO 所用 0.25/0.45 一致；Yolo 插件测试仍绿。
+- 现有 `tst_cameramanager` 仍绿。
+
+**Acceptance criteria:**
+- QML 仍零改（本任务）。
+- 运行中无法切 TensorRT。
+
+**Dependencies:** 无（规则重注入在 T07 接上；本任务空引擎即可）。接口变更：是。并发风险：是（必须停机）。新第三方依赖：否。需测量：否。
+
+**Recommended Git commit message:** `feat(app): rebuild pipeline from session inference settings when stopped`
+
+---
+
+### P8-T07  RuleModel 与停机 applyRuleSpecs
+
+**Task ID:** P8-T07
+
+**Task Name:** 规则列表模型
+
+**Goal:** QML 可增删改 `RuleSpec`；停机 apply 进 `RuleEngine`。运行中 apply 失败。不画叠加。
+
+**Files likely affected:**
+- `utilities/CameraManager.h` / `.cpp`（存 `vector<RuleSpec>`，`applyRuleSpecs`，`start()` 前同步到引擎）
+- `analytics/RuleEngine`（已有 clear，T02）
+- `tests/CMakeLists.txt`（`tst_rulemodel`）
+- `tests/CameraManagerTest.cpp` 或新测试
+- `docs/analytics/rule-engine.md`（生产可经 applyRuleSpecs 注入，仍无默认 ROI）
+
+**New files:**
+- `models/RuleModel.h` / `.cpp`
+- `tests/RuleModelTest.cpp`
+
+**Interfaces affected:**
+
+```cpp
+class RuleModel : public QAbstractListModel {
+    bool addSpec(RuleSpec spec);     // 空 id / 重复 id / makeRule 会失败的几何 → false
+    bool removeAt(int row);
+    bool setEnabled(int row, bool enabled);
+    bool setLoiterSeconds(int row, double seconds); // 非 Loitering → false
+    std::vector<RuleSpec> specs() const;
+    void replaceAll(std::vector<RuleSpec> specs);
+};
+
+class CameraManager {
+    std::vector<RuleSpec> ruleSpecs() const;
+    bool applyRuleSpecs(std::vector<RuleSpec> specs); // running → false
+};
+```
+
+RuleModel roles：`ruleId`, `kind`, `enabled`, `vertexCount`, `loiterSeconds`, `ax`, `ay`, `bx`, `by`。
+
+`CameraManager::start()`：在 `m_pipeline->start()` **之前**（pipeline start 会 reset 引擎状态但保留规则——因此必须在第一次 start 前 addRule）。若引擎里已有规则且 specs 未变，仍以 specs 为权威：`clear` + `makeRule` + `addRule` + `setEnabled`。T06 重建管线后必须再次从 `m_ruleSpecs` 注入。
+
+id 生成不放在 CameraManager：RuleModel `addSpec` 时若 `ruleId` 空，则分配 `roi-N` / `line-N` / `loiter-N` / `count-N`（N 为该 kind 已有个数+1）。
+
+**Implementation outline:**
+- CameraManager 不在 GUI 以外的线程碰 RuleModel。
+- apply 失败不修改引擎。成功则替换 `m_ruleSpecs`。
+- 生产默认仍是空列表。
+
+**Risks:**
+- 在 `start()` 之后 `addRule` 会与 evaluate 竞态——只在 `!isRunning()` 路径调用。
+- T06 重建若忘了重新 addRule，UI 有规格但引擎空。
+
+**Required tests:**
+- RuleModel：加一条合法 ROI，`rowCount==1`；重复 id false。
+- 非法多边形 false。
+- CameraManager 注入可 start 的 Fake 管线：running 时 `applyRuleSpecs` false；stop 后 true，再 start，用 Fake 轨迹不一定走真实几何——至少 `stats().enabledRules==1`（需 pipeline 已跑过一帧 `onRuled`）。若 Fake 无规则求值时机，可直接在 stop 状态 apply 后检查 `pipeline` 不可达则改为：apply 后 `start`+跑几帧+`recentEvents` 不必非空（空引擎几何可能无事件），但 `enabledRules` 在有规则时于第一帧 evaluate 后 >0。
+- `start` 两次（中间 stop）：规则仍在，不崩溃。
+- `makeRule` 失败的 spec 被 apply 跳过还是整批失败？**锁定整批失败、引擎保持 apply 前状态**（先在临时 vector 全部 makeRule 成功再 clear）。
+
+**Acceptance criteria:**
+- 运行中引擎规则集不变。
+- 不改四条规则 cpp 算法。
+
+**Dependencies:** T02, T06（重建后重注入；若 T06 尚未把 hook 留好，本任务在 `assembleFromPlugins` 末尾调用 `injectRules()`）。接口变更：是。并发风险：是。新第三方依赖：否。需测量：否。
+
+**Recommended Git commit message:** `feat(app): apply RuleSpec lists to RuleEngine only while stopped`
+
+---
+
+### P8-T08  EventWriter 接入 CameraManager
+
+**Task ID:** P8-T08
+
+**Task Name:** 后台线程持久化 EventLog 增量
+
+**Goal:** 推理产生的新事件入 SQLite，GUI 不执行 SQL。不写 Events 页。
+
+**Files likely affected:**
+- `utilities/CameraManager.h` / `.cpp`（拥有 EventWriter；`notifyFrame` 增量 enqueue；`start` 调 EventModel 不在本任务——只写 DB）
+- `CMakeLists.txt`（app 链 `visionlab_storage`）
+- `tests/CMakeLists.txt`（`tst_eventwriter`，PATH 加上 `eventwriter`）
+- `docs/analytics/rule-engine.md` 或新 `docs/storage/events.md`（路径、10000、writer 线程、打开失败降级）
+
+**New files:**
+- `storage/EventWriter.h` / `.cpp`
+- `tests/EventWriterTest.cpp`
+
+**Interfaces affected:**
+
+```cpp
+class EventWriter {
+public:
+    explicit EventWriter(std::unique_ptr<IEventRepository> repo,
+                         std::size_t queueCapacity = 1024);
+    bool start(const std::filesystem::path& dbPath); // open+jthread；失败 false
+    void enqueue(VisionEvent event);  // DropOldest，不阻塞 SQL
+    void requestQuery(EventQuery query, QObject* receiver, const char* member);
+    // 或 std::function 经 QMetaObject::invokeMethod 投递到 receiver 所在线程
+    void stop();  // close 队列、join、close repo
+};
+```
+
+CameraManager：
+- 构造后 `EventWriter::start(appData/events.sqlite)`；失败 qWarning，后续 enqueue 可 no-op。
+- `notifyFrame`：`recentEvents()`，对 `pipeline_event_id` / session 已 enqueue 的最大 id 之后的事件 `enqueue`。每次 `VisionPipeline::start` 成功后重置「已持久化 max id」（与 EventModel 的 beginSession 同一时机；本任务在 CameraManager::start 里重置 writer 游标）。
+- 析构 `stop` writer 再停 pipeline（或先停 pipeline 再 stop writer，避免新事件）。锁定：**先 `pipeline->stop()`，再 `writer.stop()`**，避免 join 后仍 enqueue。
+- `queryEvents` 转给 writer，结果 Queued 回调用方。测试用 QObject 接收。
+
+**Implementation outline:**
+- writer 循环：`pop` 一条或一批（可一次 pop 多条直到 empty）`insert` + `prune(10000)`。
+- `enqueue` 在 GUI；队列满丢最旧。
+- `requestQuery` 把查询请求也放进队列（variant：事件或 QueryJob），保证与 insert 同线程。
+- 不用 detached thread。
+
+**Risks:**
+- 先毁 repo 再 join → UAF。所有权：writer 拥有 repo，join 在析构最前。
+- GUI 调 `query()` 直接打 QSqlDatabase 会线程亲和性失败。
+- EventLog 256 而 GUI 卡住很久会丢未持久化事件——文档写明；本阶段不加大 EventLog。
+- `start()` reset EventLog 后 id 从 1：必须重置持久化游标，否则新 id=1 被当成已写。
+
+**Required tests:**
+- EventWriter + 临时 db：enqueue 3 条，短等（`QTRY_COMPARE` count==3），query 3 行、`wall_utc_ms>0`。
+- 队列 DropOldest：可测 BoundedQueue 行为已有；此处 enqueue 2000 条后 count<=1024+已刷盘，不崩。不要写死延迟毫秒阈值。
+- `open` 失败：start false，enqueue 不崩。
+- CameraManager + Fake 管线 + FakeRule：跑若干帧后临时 db `count>0`（可给 CameraManager 测专用 ctor 注入 pipeline + 可注入 writer 路径；若生产路径写 AppData，测试用 `QStandardPaths` 重定向或给 `EventWriter` 测试替身）。**锁定：CameraManager 测试用 `QTemporaryDir` + 测试钩子 `setEventDatabasePath` 或构造注入 `unique_ptr<EventWriter>`。** 不要在开发者家目录断言。
+- 现有 cameramanager / pipeline 测试仍绿。
+
+**Acceptance criteria:**
+- `notifyFrame` / 任何 Q_INVOKABLE 里无 `QSqlQuery`。
+- 不改 InferenceWorker 签名（事件仍只进 EventLog；持久化在 GUI 增量读取）。
+
+**Dependencies:** T03。接口变更：是。并发风险：是。新第三方依赖：否（沿用 T03 的 Sql）。需测量：否。
+
+**Recommended Git commit message:** `feat(app): persist EventLog increments on a writer jthread`
+
+---
+
+### P8-T09  四页导航壳
+
+**Task ID:** P8-T09
+
+**Task Name:** Main 壳与页面文件
+
+**Goal:** `Main.qml` 只做窗口与导航；四个页面文件就位；现有启停/模式/画面迁到 Monitor。接线已有模型属性。不画 ROI、Events 页可先空 ListView。
+
+**Files likely affected:**
+- `views/Main.qml`（瘦身为壳）
+- `views/TitleBar.qml`（全局启停）
+- `views/I18n.qml`（导航与页标题文案）
+- `views/CameraView.qml`（先不改 fillMode，留给 T10）
+- `controllers/VisionController.h` / `.cpp`（暴露 models、`currentPage`、`start/stop`；连接 `camera.frameChanged` 填 Detection/Track/Event；250ms timer 填 Performance；`startCamera` 里 `eventModel.beginSession()`）
+- `main.cpp`（不必堆一堆 context property；模型经 VisionController）
+- `CMakeLists.txt` `QML_FILES` 增加页面
+- `docs/ui/qml-boundary.md`（可在 T12 写完；本任务至少在 VisionController 头注释写：QML 禁止碰 pipeline）
+
+**New files:**
+- `views/SideNav.qml`
+- `views/MonitorPage.qml`
+- `views/EventsPage.qml`（占位 ListView 绑 `eventFilterModel`）
+- `views/PerformancePage.qml`（占位 Text 绑 PerformanceModel 若干属性）
+- `views/SettingsPage.qml`（占位，真正控件 T12）
+
+**Interfaces affected:**
+
+```cpp
+class VisionController {
+    Q_PROPERTY(int currentPage READ ... WRITE ... NOTIFY ...) // 0..3
+    Q_PROPERTY(DetectionModel* detectionModel READ ...)
+    Q_PROPERTY(TrackModel* trackModel READ ...)
+    Q_PROPERTY(EventModel* eventModel READ ...)
+    Q_PROPERTY(EventTypeFilterModel* eventFilterModel READ ...)
+    Q_PROPERTY(PerformanceModel* performanceModel READ ...)
+    Q_PROPERTY(PluginModel* pluginModel READ ...)
+    Q_PROPERTY(RuleModel* ruleModel READ ...)
+    Q_PROPERTY(int frameWidth READ ...)
+    Q_PROPERTY(int frameHeight READ ...)
+};
+```
+
+模型对象 parent 为 VisionController，QML 不要 `new`。
+
+**Implementation outline:**
+- 左侧 `Repeater` 四个入口，选中色沿用现有 `#74D4FF` / 标题栏 `#0F172B`。
+- `StackLayout` 四页。`Loader` 非必须（四页都轻）；不要 `Qt.createComponent(url)`。
+- 把 Main 里模式 Repeater 移到 MonitorPage。
+- TitleBar：语言左侧加启停，避免子页找不到停摄像头。Main 原 controlsBar 可删除或缩成 Monitor 的模式条。
+- `frameChanged`：`setDetections` / `setTracks` / `eventModel.ingest(camera.recentEvents())`。需 `CameraManager::recentEvents()` 包装 `m_pipeline->recentEvents()`（若尚未暴露则本任务加）。
+- Timer 250ms：`performanceModel.update(camera.statsSnapshot())`；`running==false` 仍可更新（全 0）。
+- 不在本任务改 CameraView fillMode。
+
+**Risks:**
+- 每帧 ingest 全量 snapshot 若 EventModel 实现错会 O(n²)；依赖 T05 只 append。
+- 把业务判断写进 QML `onClicked`（例如 makeRule）——禁止，只调 Q_INVOKABLE。
+- `QtQuick.Window` 在 Qt 6 已不必要；现有 Main 有该 import，可删若无 `Window` 类型依赖——Main 根是 `Window`，应 `import QtQuick.Controls` + 根 `ApplicationWindow` 或保持 `Window`（QtQuick 已含）。不要大改样式系统。
+
+**Required tests:**
+- `VisionController` 现有无单测：给 `tst_visioncontroller` 或扩展 cameramanager——用 Fake 管线：start 后 `QTRY_VERIFY(detectionModel.rowCount()>=0)`，ingest 不崩。
+- 现有 locale / cameramanager 仍绿。
+- 无 qmltestrunner 要求；本任务以编译 + C++ 接线测试为准。
+
+**Acceptance criteria:**
+- 应用能启动；四页可切换；Monitor 仍能开摄像头（人工冒烟，不写假 FPS）。
+- QML 不 import 任何 analytics/pipeline C++ 类型。
+
+**Dependencies:** T04, T05, T06（PluginModel）, T07（RuleModel）。T08 不强制（无 DB 时 EventModel 仍可直播）。接口变更：是。并发风险：是（frameChanged 必须 GUI）。新第三方依赖：否。需测量：否。
+
+**Recommended Git commit message:** `feat(ui): add four-page shell and bind list models to VisionController`
+
+---
+
+### P8-T10  Monitor：letterbox、规则叠加与绘制
+
+**Task ID:** P8-T10
+
+**Task Name:** ROI / 越线绘制
+
+**Goal:** 停机时在画面上点出多边形或线段，写入 RuleModel；运行中只读叠加。配置经 T07 apply + start 进入 RuleEngine。
+
+**Files likely affected:**
+- `views/CameraView.qml`（`PreserveAspectFit`；叠加层）
+- `views/MonitorPage.qml`（工具：ROI / 线 / 逗留 / 计数 / 选择）
+- `views/I18n.qml`
+- `controllers/VisionController.h` / `.cpp`（`Q_INVOKABLE` 映射与 commit 绘制）
+- `rendering/Letterbox.h`（T01）
+- `tests/LetterboxTest.cpp` 已有；可加 `VisionController` 映射测试或纯函数测试足够
+- `docs/ui/qml-boundary.md`（帧坐标 vs item 坐标、letterbox）
+
+**New files:**
+- `views/RuleOverlay.qml`（根据 RuleModel 画已提交几何 + 当前草稿）
+
+**Interfaces affected:**
+
+```cpp
+// VisionController
+Q_INVOKABLE QPointF itemToFrame(qreal x, qreal y, qreal itemW, qreal itemH) const;
+Q_INVOKABLE QPointF frameToItem(qreal fx, qreal fy, qreal itemW, qreal itemH) const;
+Q_INVOKABLE bool itemPointInVideo(qreal x, qreal y, qreal itemW, qreal itemH) const;
+enum DrawTool { None, Roi, Line, Loiter, Count }; // Q_ENUM
+Q_INVOKABLE void beginDraw(DrawTool tool);      // running → 忽略
+Q_INVOKABLE void addDrawPoint(qreal itemX, qreal itemY, qreal itemW, qreal itemH);
+Q_INVOKABLE void finishDraw();  // 多边形 <3 或线段不足两点 → 丢弃草稿
+Q_INVOKABLE void cancelDraw();
+Q_INVOKABLE void commitRulesToEngine(); // 转 CameraManager::applyRuleSpecs(ruleModel.specs())
+```
+
+鼠标：内容区外点击忽略。多边形：单击加点，双击或 Enter `finishDraw`。线段：两点自动 finish。Escape `cancelDraw`。
+
+运行中：`beginDraw` no-op；叠加仍显示已 apply 的 specs（RuleModel 即会话权威；未 start 前的 specs 也应画，便于停机编辑）。
+
+**Implementation outline:**
+- CameraView 根上叠 `RuleOverlay`，`anchors.fill` 与 Image 同一 item 尺寸（含黑边），绘制时用 `frameToItem`。
+- 不修改 DetectionRenderer / TrackRenderer。
+- `commitRulesToEngine` 供「应用规则」按钮；`startCamera` 内也调用一次 apply（T07 已要求 start 前注入）。避免重复定义。
+- 有向线段 UI：从 A 画到 B，箭头只表示 A→B，不新造几何语义。
+
+**Risks:**
+- Image 的 margins（现有 `anchors.margins: 10`）必须计入映射的 item 尺寸——**锁定：映射相对显示 Image 的 item，不是外层圆角容器**。Letterbox 的 itemW/H 传 Image 的 width/height。
+- 运行中修改 RuleModel 但不 apply 会让叠加与引擎不一致——运行中禁用 add/remove（QML `enabled: !VisionController.running`）。
+- 把点存成 item 坐标：窗口一 resize 全错。必须存帧像素进 RuleSpec。
+
+**Required tests:**
+- C++：VisionController 在 frameWidth/Height=100、item 200×100 时，(50,0)→(0,0)（可构造 controller+Fake 帧尺寸属性；若太重则测 `computeLetterbox` + 一层 Q_INVOKABLE 转发的辅助函数）。
+- RuleModel 经 `finishDraw` 等价路径：用 C++ 调 `addSpec` 已在 T07 覆盖；本任务至少保证 `itemToFrame` 拒绝黑边。
+- 现有 renderer 测试仍绿。
+
+**Acceptance criteria:**
+- 停机画一个矩形 ROI（四点）+ start，引擎 `enabledRules>=1`（可用 CameraManager stats 在测试里走 addSpec 而非真鼠标）。
+- Crop 不再使用。
+
+**Dependencies:** T01, T07, T09。接口变更：是。并发风险：否（停机绘制）。新第三方依赖：否。需测量：否。
+
+**Recommended Git commit message:** `feat(ui): draw ROI and line rules in frame coordinates on Monitor`
+
+---
+
+### P8-T11  Events 页
+
+**Task ID:** P8-T11
+
+**Task Name:** 事件列表与类型过滤
+
+**Goal:** 展示会话内（及启动时 DB 历史）事件；可按类型过滤。不在 GUI 做 SQL。
+
+**Files likely affected:**
+- `views/EventsPage.qml`
+- `views/I18n.qml`
+- `controllers/VisionController.cpp`（启动完成后 `requestQuery` 预填 `ingest({}, history)` 一次）
+- `utilities/CameraManager.h`（把 T08 的 query 暴露给 controller）
+
+**New files:** 无（页已在 T09 占位）
+
+**Interfaces affected:**
+- `VisionController::eventTypeFilter` int 属性，写入 `EventTypeFilterModel`。
+- 启动：writer query `limit=500` 无 type 过滤 → `EventModel::ingest({}, history)` 在 `beginSession` 之前或之后？**锁定：构造/首帧前 `ingest` history（rowId 填充），然后每次 `startCamera` 只 `beginSession`，不清除 history 行。**
+
+**Implementation outline:**
+- ListView delegate：墙钟（`wallUtcMs` → 本地时间字符串在 QML `Qt.formatDateTime` 或 C++ role `timeText`）。**锁定：C++ 增加 `timeText` role**，避免 QML 自己除 1000。
+- 列：时间、类型、ruleId、trackId、label、message。
+- 顶部 ComboBox：全部 / ROI / 越线 / 逗留 / 计数。
+- 空状态文案。不显示 snapshot 图。
+
+**Risks:**
+- 在 EventsPage `Component.onCompleted` 里直接打开第二个 `QSqlDatabase`。
+- 过滤时重置源模型丢掉直播 append。
+
+**Required tests:**
+- EventModel history 预填 + 之后直播 ingest 的 T05 已覆盖；本任务加：filter 属性切换 proxy rowCount。
+- 不强制 GUI 点击测试。
+
+**Acceptance criteria:**
+- 事件页可滚动、可过滤；开摄像头产生规则事件后列表增长（需 T10 配置规则；无规则时只显示历史）。
+- QML 无 SQL。
+
+**Dependencies:** T05, T08, T09。接口变更：小（filter 属性 / timeText）。并发风险：query 回调必须 Queued。新第三方依赖：否。需测量：否。
+
+**Recommended Git commit message:** `feat(ui): add Events page with type filter and wall-clock timestamps`
+
+---
+
+### P8-T12  Performance 页、Settings 页与边界文档
+
+**Task ID:** P8-T12
+
+**Task Name:** 性能面板与安全设置页
+
+**Goal:** 250ms 遥测可视化；设置项停机 Apply 重建管线。写 QML/C++ 边界文档。
+
+**Files likely affected:**
+- `views/PerformancePage.qml`
+- `views/SettingsPage.qml`
+- `views/I18n.qml`
+- `controllers/VisionController.cpp`（`applySettings` Q_INVOKABLE → `CameraManager::applySessionSettings`；失败原因字符串）
+- `docs/ui/qml-boundary.md`
+- `docs/analytics/rule-engine.md`（补 UI 停机 apply、叠加层不进 renderer）
+- `tests/CameraManagerTest.cpp`（Settings 路径已在 T06；本任务补 apply 失败文案若有 C++ API）
+
+**New files:**
+- `docs/ui/qml-boundary.md`
+
+**Interfaces affected:**
+
+```cpp
+Q_INVOKABLE bool applyUiSettings(int backend, int precision, int deviceId,
+                                 float confidence, float nms, bool tracking);
+Q_INVOKABLE QString lastSettingsError() const;
+Q_INVOKABLE bool applyUiRules(); // 即 commitRulesToEngine
+```
+
+backend 整型与 `InferenceBackend` 枚举值一致。INT8 不出现在 ComboBox。TensorRT 在未编译 `VISIONLAB_HAS_TENSORRT` 时仍可显示，Apply 后创建失败 → false + error，**保持旧 pipeline**（T06 应已 stop+assemble；若 assemble 得到缺 YOLO 的 detectors，与现网缺插件行为一致。**锁定：applySessionSettings 在 assemble 前把旧 pipeline 移到局部 backup，新 assemble 若 `detectors.empty()` 且旧的非空则恢复 backup 并 false。** 若 T06 未做 backup，本任务补上。）
+
+Performance 页：capture/inference FPS、P50/P95、E2E、queue depth、dropped、activeTracks、eventsEmitted、avgRuleLatencyMs、enabledRules。普通 Text/Grid，不上 Chart 库。不要 16ms 刷一次。
+
+Settings 页：backend、precision、device、confidence、NMS、tracking 开关、插件只读列表、规则列表 enable + loiter 秒、Apply。运行中 Apply 按钮 disabled 或按下得到 error「先停止摄像头」。
+
+**Implementation outline:**
+- 文档必须写：模型线程、250ms、letterbox、停机改规则/设置、EventWriter、QML 禁止的 include、与 Phase 9 基准的边界（本页数字是实时快照不是 benchmark 文件）。
+- 不改推理内核。
+
+**Risks:**
+- 运行中 Apply 把 pipeline 拆掉导致悬挂 jthread。
+- Performance 页用 `NumberAnimation` 绑 FPS 造成多余绑定计算——用静态 Text。
+- 文档写「保证 60FPS」等无测量承诺——禁止。
+
+**Required tests:**
+- `applySessionSettings` running → false（T06）；backup 恢复：若本任务新增 backup，测 assemble 失败恢复。
+- PerformanceModel 已测；本任务无新算法测试。
+- 全量默认 ctest 仍绿（无 GPU 项不得无故变红）。
+
+**Acceptance criteria（对照 Phase 8 DoD）：**
+- UI 不跑推理 / evaluate / SQL。
+- Track 叠加仍在（C++ renderer）+ 规则几何在 QML。
+- Events 页（T11）+ 本页性能与设置。
+- ROI/线经 RuleSpec 到达 RuleEngine（停机 apply + start）。
+- SQLite 能存能查（T03/T08/T11）。
+- 无高频性能信号。
+
+**Dependencies:** T05, T06, T07, T09（Events 页 T11 可并行于本任务，但推荐先 T11）。接口变更：是。并发风险：是（Apply 停机）。新第三方依赖：否。需测量：否（禁止编造 FPS）。
+
+**Recommended Git commit message:** `feat(ui): add performance and settings pages with stopped-pipeline apply`
 
 ---
 
@@ -876,30 +975,32 @@ Grep：`detectors/` 与 `plugins/` 与 `tracking/` 不得出现 `IRule` / `RuleE
 
 | Task ID | 名称 | 依赖 | 接口变更 | 并发风险 | 新依赖 | 需测量 | 新测试 |
 |---|---|---|---|---|---|---|---|
-| P7-T01 | VisionEvent 领域类型 | 无 | 是 | 否 | 否 | 否 | 是 |
-| P7-T02 | IRule + 规则文档 | T01 | 是 | 否 | 否 | 否 | 是 |
-| P7-T03 | 脚点 / 多边形 / 越线原语 | T01 | 是 | 否 | 否 | 否 | 是 |
-| P7-T04 | RoiIntrusionRule | T02, T03 | 是 | 否 | 否 | 否 | 是 |
-| P7-T05 | LineCrossingRule | T02, T03 | 是 | 否 | 否 | 否 | 是 |
-| P7-T06 | LoiteringRule | T02, T03 | 是 | 否 | 否 | 否 | 是 |
-| P7-T07 | CountingRule | T02, T03 | 是 | 否 | 否 | 否 | 是 |
-| P7-T08 | RuleEngine | T02 | 是 | 否 | 否 | 否 | 是 |
-| P7-T09 | 管线 + EventLog + 空引擎 | T08 | 是 | 是 | 否 | 否 | 是 |
+| P8-T01 | Letterbox 映射 | 无 | 是 | 否 | 否 | 否 | 是 |
+| P8-T02 | RuleSpec / clear / makeRule | 无 | 是 | 否 | 否 | 否 | 是 |
+| P8-T03 | SQLite EventRepository | 无 | 是 | 否 | Qt6::Sql | 否 | 是 |
+| P8-T04 | DetectionModel / TrackModel | 无 | 是 | 否 | 否 | 否 | 是 |
+| P8-T05 | EventModel / PerformanceModel | T03 | 是 | 否 | 否 | 否 | 是 |
+| P8-T06 | 会话设置与管线重建 | 无 | 是 | 是 | 否 | 否 | 是 |
+| P8-T07 | RuleModel 停机 apply | T02, T06 | 是 | 是 | 否 | 否 | 是 |
+| P8-T08 | EventWriter | T03 | 是 | 是 | 否 | 否 | 是 |
+| P8-T09 | 四页壳 + 模型接线 | T04–T07 | 是 | 是 | 否 | 否 | 是 |
+| P8-T10 | Monitor 绘制 | T01, T07, T09 | 是 | 否 | 否 | 否 | 是 |
+| P8-T11 | Events 页 | T05, T08, T09 | 小 | 是 | 否 | 否 | 是 |
+| P8-T12 | Performance / Settings / 文档 | T05–T07, T09 | 是 | 是 | 否 | 否 | 是 |
 
-## Phase 7 DoD 对照
+## Phase 8 DoD 对照
 
 | DoD | 任务 |
 |---|---|
-| IRule abstraction exists | T02, T08 |
-| RuleEngine is detector/tracker independent | T08, T09 Grep |
-| ROI intrusion works | T04 |
-| Line crossing works directionally | T05 |
-| Loitering works | T06 |
-| Counting works | T07 |
-| Event duplication is controlled | T04–T07 状态机；文档锁定无 per-frame spam |
-| Rules are configurable | T04–T07 Config；T08 enable；生产空引擎 |
-| Tests cover geometry/state edge cases | T03–T07 |
-| Pipeline remains responsive | T09 不新增 GUI 阻塞；不新开线程 |
-| After implementation explain state machines | T02 文档 + T09 补接线 |
+| UI remains responsive | T05 250ms；T08 SQL 不在 GUI；T04 每帧模型行数小 |
+| Track overlays work | 现有 TrackRenderer；T10 不拆除 |
+| Event page works | T05, T08, T11 |
+| Performance telemetry works | T05, T09, T12 |
+| Settings can select implemented options safely | T06, T12 |
+| ROI/line configuration reaches RuleEngine | T02, T07, T10 |
+| QML does not own core business logic | T09–T12；`docs/ui/qml-boundary.md` |
+| SQLite stores/query events | T03, T08, T11 |
+| No high-frequency unnecessary UI allocations | T05 增量事件；性能 250ms；不把 rgb 放进模型 |
+| Tests cover model roles / SQLite | T03–T05, T08 |
 
 指定 Task ID 之前不要写实现代码。
