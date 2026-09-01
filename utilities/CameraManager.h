@@ -2,6 +2,8 @@
 #define CAMERAMANAGER_H
 
 #include <memory>
+#include <string>
+#include <vector>
 
 #include <QImage>
 #include <QMutex>
@@ -11,6 +13,8 @@
 #include "core/VisionTypes.h"
 #include "pipeline/VisionPipeline.h"
 #include "plugin/PluginManager.h"
+#include "plugin/PluginMetadata.h"
+#include "utilities/SessionSettings.h"
 #include "video/IVideoSource.h"
 
 // GUI 边界上的相机编排器：拥有 PluginManager 与 VisionPipeline，
@@ -38,6 +42,14 @@ public:
     bool start();
     bool stop();
     void setMode(visionlab::DetectionMode mode);
+    visionlab::DetectionMode mode() const;
+
+    visionlab::SessionSettings sessionSettings() const;
+    // running 时返回 false 且不改动。停机时用新设置重建管线。
+    bool applySessionSettings(const visionlab::SessionSettings& settings);
+
+    std::vector<visionlab::PluginMetadata> pluginMetadata() const;
+    std::vector<std::string> pluginLoadErrors() const;
 
     QImage frame() const;
     visionlab::PipelineStats statsSnapshot() const;
@@ -54,6 +66,7 @@ private:
     void bindPresentedCallback();
 
     visionlab::PluginManager m_plugins;
+    visionlab::SessionSettings m_session;
     std::unique_ptr<visionlab::VisionPipeline> m_pipeline;
     mutable QMutex m_frameMutex;
     QImage m_frame;

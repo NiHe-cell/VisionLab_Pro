@@ -31,6 +31,8 @@ std::unique_ptr<visionlab::IDetector> YoloVisionPlugin::createDetector(
     config.backend = request.backend;
     config.precision = request.precision;
     config.deviceId = request.deviceId;
+    config.confidenceThreshold = request.confidenceThreshold;
+    config.nmsThreshold = request.nmsThreshold;
     return std::make_unique<visionlab::YoloDetector>(
         visionlab::createInferenceEngine(config), std::move(config));
 }

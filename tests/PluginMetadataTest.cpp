@@ -58,6 +58,8 @@ void PluginMetadataTest::createRequestDefaultsToCpuFp32()
     QVERIFY(request.backend == InferenceBackend::OnnxRuntimeCpu);
     QVERIFY(request.precision == InferencePrecision::Fp32);
     QCOMPARE(request.deviceId, 0);
+    QCOMPARE(request.confidenceThreshold, 0.25F);
+    QCOMPARE(request.nmsThreshold, 0.45F);
     QVERIFY(request.modelDir.empty());
 }
 

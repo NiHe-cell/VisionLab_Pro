@@ -182,6 +182,14 @@ target_link_libraries(tst_performancemodel PRIVATE visionlab_core Qt6::Core Qt6:
 target_include_directories(tst_performancemodel PRIVATE ${CMAKE_SOURCE_DIR})
 add_test(NAME performancemodel COMMAND tst_performancemodel)
 
+add_executable(tst_pluginmodel
+    PluginModelTest.cpp
+    ${CMAKE_SOURCE_DIR}/models/PluginModel.cpp
+    ${CMAKE_SOURCE_DIR}/models/PluginModel.h)
+target_link_libraries(tst_pluginmodel PRIVATE visionlab_plugin Qt6::Core Qt6::Test)
+target_include_directories(tst_pluginmodel PRIVATE ${CMAKE_SOURCE_DIR})
+add_test(NAME pluginmodel COMMAND tst_pluginmodel)
+
 add_executable(tst_yolodecoding YoloDecodingTest.cpp)
 target_link_libraries(tst_yolodecoding PRIVATE visionlab_detectors Qt6::Core Qt6::Test)
 add_test(NAME yolodecoding COMMAND tst_yolodecoding)
@@ -452,7 +460,7 @@ if(WIN32)
     set(visionlab_tests
         smoke framepacket track visionevent modelconfig iinferenceengine onnxruntimeengine inferenceenginefactory onnxruntimecudaengine inferenceselection pluginmetadata idetector itracker irule rulegeometry roiintrusion linecrossing loitering counting ruleengine ioumatching kalmanboxfilter bytetracktracker detectionrenderer trackrenderer
         yolodecoding yolopreprocess yolodetector ssddecoding motiondetector dummydetector dummyplugin motionplugin faceplugin yoloplugin pluginmanager ivideosource
-        letterbox rulespec eventrepository detectionmodel trackmodel eventmodel performancemodel
+        letterbox rulespec eventrepository detectionmodel trackmodel eventmodel performancemodel pluginmodel
         camerasource modemapping boundedqueue latestresult captureworker
         inferenceworker latencywindow statsprobe eventlog visionpipeline
         pipelineoverload pipelinelifecycle cameramanager localecontroller

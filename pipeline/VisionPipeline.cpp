@@ -94,6 +94,14 @@ void VisionPipeline::setPresentedCallback(std::function<void()> callback)
     m_onPresented = std::move(callback);
 }
 
+std::unique_ptr<IVideoSource> VisionPipeline::releaseSource()
+{
+    std::lock_guard lock(m_lifecycle);
+    if (m_running)
+        return {};
+    return std::move(m_source);
+}
+
 IDetector* VisionPipeline::currentDetector()
 {
     const auto it = m_detectors.find(m_mode.load());

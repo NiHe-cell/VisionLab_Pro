@@ -56,6 +56,9 @@ public:
     PipelineStats stats() const;
     std::vector<VisionEvent> recentEvents() const;
 
+    // 仅在 !isRunning() 时有效。取出视频源供宿主按新会话设置重建管线。
+    std::unique_ptr<IVideoSource> releaseSource();
+
     // 在推理线程、publish 之后调用。回调不得做 GUI 工作；编排层应 QueuedConnection 切回 GUI。
     void setPresentedCallback(std::function<void()> callback);
 

@@ -13,10 +13,12 @@
 #include "pipeline/VisionPipeline.h"
 #include "tracking/ByteTrackTracker.h"
 #include "utilities/CameraManager.h"
+#include "utilities/SessionSettings.h"
 
 using visionlab::ByteTrackTracker;
 using visionlab::DetectionMode;
 using visionlab::IDetector;
+using visionlab::SessionSettings;
 using visionlab::VisionPipeline;
 
 namespace {
@@ -73,6 +75,8 @@ private slots:
     void missingYoloObjectModeStaysAlive();
     void productionPluginsSwitchModesWithoutCrash();
     void productionPluginsRepeatStartStop();
+    void applyRejectedWhileRunningKeepsMode();
+    void trackingDisabledRebuildPublishesFramesWithoutTracks();
 };
 
 void CameraManagerTest::cleanup()
@@ -178,6 +182,43 @@ void CameraManagerTest::productionPluginsRepeatStartStop()
     QVERIFY(manager.start());
     QVERIFY(manager.stop());
     QVERIFY(manager.start());
+    QVERIFY(manager.stop());
+}
+
+void CameraManagerTest::applyRejectedWhileRunningKeepsMode()
+{
+    auto source = std::make_unique<FakeVideoSource>(32, "fake:apply-running", true, true);
+    CameraManager manager(makePipeline(std::move(source)));
+    QVERIFY(manager.start());
+    QVERIFY(manager.mode() == DetectionMode::Face);
+
+    SessionSettings settings = manager.sessionSettings();
+    settings.trackingEnabled = false;
+    QVERIFY(!manager.applySessionSettings(settings));
+    QVERIFY(manager.mode() == DetectionMode::Face);
+    QVERIFY(manager.sessionSettings().trackingEnabled);
+
+    QVERIFY(manager.stop());
+}
+
+void CameraManagerTest::trackingDisabledRebuildPublishesFramesWithoutTracks()
+{
+    qputenv("VISIONLAB_PLUGIN_DIR", VISIONLAB_BUILD_PLUGINS_DIR);
+
+    auto source = std::make_unique<FakeVideoSource>(64, "fake:no-track", true, true);
+    CameraManager manager(std::move(source));
+
+    SessionSettings settings = manager.sessionSettings();
+    settings.trackingEnabled = false;
+    QVERIFY(manager.applySessionSettings(settings));
+    QVERIFY(!manager.sessionSettings().trackingEnabled);
+
+    QSignalSpy changed(&manager, &CameraManager::frameChanged);
+    QVERIFY(manager.start());
+    QVERIFY(changed.wait(2000));
+    QVERIFY(!manager.frame().isNull());
+    QTRY_VERIFY_WITH_TIMEOUT(manager.statsSnapshot().processedFrames > 0, 2000);
+    QCOMPARE(manager.statsSnapshot().activeTracks, std::size_t{0});
     QVERIFY(manager.stop());
 }
 

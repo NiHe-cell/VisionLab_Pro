@@ -17,6 +17,7 @@
 #include "plugin/DetectorCreateRequest.h"
 #include "analytics/RuleEngine.h"
 #include "tracking/ByteTrackTracker.h"
+#include "tracking/ITracker.h"
 #include "video/CameraSource.h"
 
 namespace {
@@ -84,6 +85,8 @@ CameraManager::CameraManager()
 
 CameraManager::CameraManager(std::unique_ptr<visionlab::IVideoSource> source)
 {
+    warnInvalidInferenceEnv();
+    m_session.inference = visionlab::inferenceSelectionFromEnv();
     assembleFromPlugins(std::move(source));
     bindPresentedCallback();
 }
@@ -91,6 +94,8 @@ CameraManager::CameraManager(std::unique_ptr<visionlab::IVideoSource> source)
 CameraManager::CameraManager(std::unique_ptr<visionlab::VisionPipeline> pipeline)
     : m_pipeline(std::move(pipeline))
 {
+    warnInvalidInferenceEnv();
+    m_session.inference = visionlab::inferenceSelectionFromEnv();
     if (m_pipeline)
         m_pipeline->setMode(visionlab::DetectionMode::Face);
     bindPresentedCallback();
@@ -104,9 +109,6 @@ CameraManager::~CameraManager()
 
 void CameraManager::assembleFromPlugins(std::unique_ptr<visionlab::IVideoSource> source)
 {
-    warnInvalidInferenceEnv();
-    const visionlab::InferenceSelection selection = visionlab::inferenceSelectionFromEnv();
-
     m_plugins.scan(pluginDirPath());
 
     QStringList ids;
@@ -116,9 +118,11 @@ void CameraManager::assembleFromPlugins(std::unique_ptr<visionlab::IVideoSource>
 
     visionlab::DetectorCreateRequest request;
     request.modelDir = modelDirPath();
-    request.backend = selection.backend;
-    request.precision = selection.precision;
-    request.deviceId = selection.deviceId;
+    request.backend = m_session.inference.backend;
+    request.precision = m_session.inference.precision;
+    request.deviceId = m_session.inference.deviceId;
+    request.confidenceThreshold = m_session.confidenceThreshold;
+    request.nmsThreshold = m_session.nmsThreshold;
 
     std::map<visionlab::DetectionMode, std::unique_ptr<visionlab::IDetector>> detectors;
     const auto plugins = m_plugins.metadata();
@@ -153,10 +157,13 @@ void CameraManager::assembleFromPlugins(std::unique_ptr<visionlab::IVideoSource>
     }
 
     // 生产注入空 RuleEngine，不注册默认 ROI / 越线。
+    std::unique_ptr<visionlab::ITracker> tracker;
+    if (m_session.trackingEnabled)
+        tracker = std::make_unique<visionlab::ByteTrackTracker>();
     m_pipeline = std::make_unique<visionlab::VisionPipeline>(
         std::move(source), std::move(detectors),
         visionlab::VisionPipeline::kDefaultQueueCapacity,
-        std::make_unique<visionlab::ByteTrackTracker>(),
+        std::move(tracker),
         std::make_unique<visionlab::RuleEngine>());
     m_pipeline->setMode(visionlab::DetectionMode::Face);
 }
@@ -203,6 +210,45 @@ void CameraManager::setMode(visionlab::DetectionMode mode)
 {
     if (m_pipeline)
         m_pipeline->setMode(mode);
+}
+
+visionlab::DetectionMode CameraManager::mode() const
+{
+    if (!m_pipeline)
+        return visionlab::DetectionMode::None;
+    return m_pipeline->mode();
+}
+
+visionlab::SessionSettings CameraManager::sessionSettings() const
+{
+    return m_session;
+}
+
+bool CameraManager::applySessionSettings(const visionlab::SessionSettings& settings)
+{
+    if (m_pipeline && m_pipeline->isRunning())
+        return false;
+    if (!m_pipeline)
+        return false;
+
+    auto source = m_pipeline->releaseSource();
+    if (!source)
+        return false;
+
+    m_session = settings;
+    assembleFromPlugins(std::move(source));
+    bindPresentedCallback();
+    return true;
+}
+
+std::vector<visionlab::PluginMetadata> CameraManager::pluginMetadata() const
+{
+    return m_plugins.metadata();
+}
+
+std::vector<std::string> CameraManager::pluginLoadErrors() const
+{
+    return m_plugins.errors();
 }
 
 void CameraManager::notifyFrame()
