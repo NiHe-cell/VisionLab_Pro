@@ -52,6 +52,7 @@ find_package(Qt6 REQUIRED COMPONENTS
     Widgets
     Quick
     Qml
+    Sql
 )
 
 qt_standard_project_setup(REQUIRES 6.8)
@@ -115,6 +116,17 @@ add_library(visionlab_analytics STATIC
 target_include_directories(visionlab_analytics PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(visionlab_analytics PUBLIC visionlab_core)
 set_target_properties(visionlab_analytics PROPERTIES LINKER_LANGUAGE CXX)
+
+# 事件仓储：Qt Sql，不链 QML。连接只允许在拥有该实例的线程上使用。
+add_library(visionlab_storage STATIC
+    storage/EventQuery.h
+    storage/IEventRepository.h
+    storage/SqliteEventRepository.h
+    storage/SqliteEventRepository.cpp
+)
+target_include_directories(visionlab_storage PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(visionlab_storage PUBLIC visionlab_core Qt6::Sql)
+set_target_properties(visionlab_storage PROPERTIES LINKER_LANGUAGE CXX)
 
 # 检测器插件契约：Qt Core 仅出现在 plugin/ 层，core 仍然不链接 Qt。
 add_library(visionlab_plugin STATIC
