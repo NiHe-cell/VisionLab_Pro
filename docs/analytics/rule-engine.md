@@ -149,11 +149,18 @@ means hysteresis via the IN set, not a lifetime ban.
 
 ## IRule / RuleEngine
 
-`evaluate` / `reset` are not thread-safe. Only the inference thread
-may call them during a running session. GUI `setMode` must not call
-`reset()`; the worker resets on the next evaluate when the detection
-mode changes. `VisionPipeline::start()` may `reset()` on the caller
-thread **before** the inference `jthread` exists.
+`evaluate` / `reset` / `addRule` / `setEnabled` / `clear` are not
+thread-safe. Only the inference thread may call `evaluate` / `reset`
+during a running session. GUI must not mutate the engine while the
+pipeline is running; Phase 8 applies a `vector<RuleSpec>` only when
+stopped (`clear` + `makeRule` + `addRule` + `setEnabled`).
+`VisionPipeline::start()` may `reset()` on the caller thread **before**
+the inference `jthread` exists.
+
+UI and session state hold `RuleSpec` values. `makeRule` turns a spec
+into `unique_ptr<IRule>`. `enabled` stays on the engine. Production
+still injects an empty engine until specs are applied. `clear()` drops
+all rules and restarts `eventId` at 1.
 
 `eventId` is assigned by `RuleEngine`, starting at 1, never reused
 until `reset()`. Rules return `eventId == 0`. Enable/disable lives on
@@ -206,5 +213,6 @@ headers.
 - Foot-point inside can miss a large box that only overlaps the ROI
   with a corner.
 - Greedy track ID swaps (Phase 6) can cause spurious enter/cross events.
-- Configuration is constructor `*Config` values. No hot reload.
+- Configuration is `RuleSpec` / constructor `*Config` values. No hot reload
+  while the pipeline is running. Mutate only when stopped.
 - No time-based cooldown on top of the state machines.

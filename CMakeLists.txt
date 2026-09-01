@@ -106,6 +106,9 @@ add_library(visionlab_analytics STATIC
     analytics/LoiteringRule.cpp
     analytics/CountingRule.h
     analytics/CountingRule.cpp
+    analytics/RuleSpec.h
+    analytics/RuleFactory.h
+    analytics/RuleFactory.cpp
     analytics/RuleEngine.h
     analytics/RuleEngine.cpp
 )

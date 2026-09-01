@@ -102,6 +102,26 @@ void RuleEngine::reset()
     m_lastEvaluateLatencyMs = 0.0;
 }
 
+void RuleEngine::clear()
+{
+    m_entries.clear();
+    m_nextEventId = 1;
+    m_eventsEmitted = 0;
+    m_lastEvaluateLatencyMs = 0.0;
+}
+
+std::vector<std::string> RuleEngine::ruleIds() const
+{
+    std::vector<std::string> ids;
+    ids.reserve(m_entries.size());
+    for (const Entry& entry : m_entries)
+    {
+        if (entry.rule)
+            ids.push_back(entry.rule->id());
+    }
+    return ids;
+}
+
 RuleEngineStats RuleEngine::stats() const
 {
     RuleEngineStats stats;

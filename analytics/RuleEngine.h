@@ -26,6 +26,8 @@ public:
         const RuleContext& context);
 
     void reset();
+    void clear();
+    std::vector<std::string> ruleIds() const;
     RuleEngineStats stats() const;
 
 private:

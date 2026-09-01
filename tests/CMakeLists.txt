@@ -116,6 +116,10 @@ target_link_libraries(tst_ruleengine PRIVATE visionlab_analytics Qt6::Core Qt6::
 target_include_directories(tst_ruleengine PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 add_test(NAME ruleengine COMMAND tst_ruleengine)
 
+add_executable(tst_rulespec RuleSpecTest.cpp)
+target_link_libraries(tst_rulespec PRIVATE visionlab_analytics Qt6::Core Qt6::Test)
+add_test(NAME rulespec COMMAND tst_rulespec)
+
 add_executable(tst_ioumatching IouMatchingTest.cpp)
 target_link_libraries(tst_ioumatching PRIVATE visionlab_tracking Qt6::Core Qt6::Test)
 add_test(NAME ioumatching COMMAND tst_ioumatching)
@@ -410,7 +414,7 @@ if(WIN32)
     set(visionlab_tests
         smoke framepacket track visionevent modelconfig iinferenceengine onnxruntimeengine inferenceenginefactory onnxruntimecudaengine inferenceselection pluginmetadata idetector itracker irule rulegeometry roiintrusion linecrossing loitering counting ruleengine ioumatching kalmanboxfilter bytetracktracker detectionrenderer trackrenderer
         yolodecoding yolopreprocess yolodetector ssddecoding motiondetector dummydetector dummyplugin motionplugin faceplugin yoloplugin pluginmanager ivideosource
-        letterbox
+        letterbox rulespec
         camerasource modemapping boundedqueue latestresult captureworker
         inferenceworker latencywindow statsprobe eventlog visionpipeline
         pipelineoverload pipelinelifecycle cameramanager localecontroller

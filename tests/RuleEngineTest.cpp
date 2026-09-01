@@ -36,6 +36,8 @@ private slots:
     void disableSkipsRuleWithoutChangingSize();
     void duplicateIdIsRejected();
     void resetRestartsIdsAndCallsRuleReset();
+    void clearDropsRulesAndRestartsIds();
+    void ruleIdsFollowRegistrationOrder();
 };
 
 void RuleEngineTest::emptyEngineEmitsNothing()
@@ -121,6 +123,32 @@ void RuleEngineTest::resetRestartsIdsAndCallsRuleReset()
     QCOMPARE(engine.stats().lastEvaluateLatencyMs, 0.0);
     const auto events = engine.evaluate({oneTrack()}, RuleContext{});
     QCOMPARE(events.front().eventId, std::uint64_t{1});
+}
+
+void RuleEngineTest::clearDropsRulesAndRestartsIds()
+{
+    RuleEngine engine;
+    QVERIFY(engine.addRule(std::make_unique<FakeRule>("fake")));
+    QVERIFY(engine.addRule(std::make_unique<FakeRule>("fake2")));
+    engine.evaluate({oneTrack()}, RuleContext{});
+    engine.clear();
+
+    QCOMPARE(engine.size(), std::size_t{0});
+    QVERIFY(engine.ruleIds().empty());
+    QCOMPARE(engine.stats().eventsEmitted, std::uint64_t{0});
+    QCOMPARE(engine.stats().lastEvaluateLatencyMs, 0.0);
+
+    QVERIFY(engine.addRule(std::make_unique<FakeRule>("fake")));
+    const auto events = engine.evaluate({oneTrack()}, RuleContext{});
+    QCOMPARE(events.front().eventId, std::uint64_t{1});
+}
+
+void RuleEngineTest::ruleIdsFollowRegistrationOrder()
+{
+    RuleEngine engine;
+    QVERIFY(engine.addRule(std::make_unique<FakeRule>("fake")));
+    QVERIFY(engine.addRule(std::make_unique<FakeRule>("fake2")));
+    QCOMPARE(engine.ruleIds(), (std::vector<std::string>{"fake", "fake2"}));
 }
 
 QTEST_APPLESS_MAIN(RuleEngineTest)
