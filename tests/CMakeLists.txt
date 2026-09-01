@@ -164,6 +164,24 @@ target_link_libraries(tst_trackmodel PRIVATE visionlab_core Qt6::Core Qt6::Test)
 target_include_directories(tst_trackmodel PRIVATE ${CMAKE_SOURCE_DIR})
 add_test(NAME trackmodel COMMAND tst_trackmodel)
 
+add_executable(tst_eventmodel
+    EventModelTest.cpp
+    ${CMAKE_SOURCE_DIR}/models/EventModel.cpp
+    ${CMAKE_SOURCE_DIR}/models/EventModel.h
+    ${CMAKE_SOURCE_DIR}/models/EventTypeFilterModel.cpp
+    ${CMAKE_SOURCE_DIR}/models/EventTypeFilterModel.h)
+target_link_libraries(tst_eventmodel PRIVATE visionlab_storage Qt6::Core Qt6::Test)
+target_include_directories(tst_eventmodel PRIVATE ${CMAKE_SOURCE_DIR})
+add_test(NAME eventmodel COMMAND tst_eventmodel)
+
+add_executable(tst_performancemodel
+    PerformanceModelTest.cpp
+    ${CMAKE_SOURCE_DIR}/models/PerformanceModel.cpp
+    ${CMAKE_SOURCE_DIR}/models/PerformanceModel.h)
+target_link_libraries(tst_performancemodel PRIVATE visionlab_core Qt6::Core Qt6::Test)
+target_include_directories(tst_performancemodel PRIVATE ${CMAKE_SOURCE_DIR})
+add_test(NAME performancemodel COMMAND tst_performancemodel)
+
 add_executable(tst_yolodecoding YoloDecodingTest.cpp)
 target_link_libraries(tst_yolodecoding PRIVATE visionlab_detectors Qt6::Core Qt6::Test)
 add_test(NAME yolodecoding COMMAND tst_yolodecoding)
@@ -434,7 +452,7 @@ if(WIN32)
     set(visionlab_tests
         smoke framepacket track visionevent modelconfig iinferenceengine onnxruntimeengine inferenceenginefactory onnxruntimecudaengine inferenceselection pluginmetadata idetector itracker irule rulegeometry roiintrusion linecrossing loitering counting ruleengine ioumatching kalmanboxfilter bytetracktracker detectionrenderer trackrenderer
         yolodecoding yolopreprocess yolodetector ssddecoding motiondetector dummydetector dummyplugin motionplugin faceplugin yoloplugin pluginmanager ivideosource
-        letterbox rulespec eventrepository detectionmodel trackmodel
+        letterbox rulespec eventrepository detectionmodel trackmodel eventmodel performancemodel
         camerasource modemapping boundedqueue latestresult captureworker
         inferenceworker latencywindow statsprobe eventlog visionpipeline
         pipelineoverload pipelinelifecycle cameramanager localecontroller
