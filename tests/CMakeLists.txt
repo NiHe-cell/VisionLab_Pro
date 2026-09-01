@@ -148,6 +148,22 @@ add_executable(tst_letterbox LetterboxTest.cpp)
 target_link_libraries(tst_letterbox PRIVATE visionlab_rendering Qt6::Core Qt6::Test)
 add_test(NAME letterbox COMMAND tst_letterbox)
 
+add_executable(tst_detectionmodel
+    DetectionModelTest.cpp
+    ${CMAKE_SOURCE_DIR}/models/DetectionModel.cpp
+    ${CMAKE_SOURCE_DIR}/models/DetectionModel.h)
+target_link_libraries(tst_detectionmodel PRIVATE visionlab_core Qt6::Core Qt6::Test)
+target_include_directories(tst_detectionmodel PRIVATE ${CMAKE_SOURCE_DIR})
+add_test(NAME detectionmodel COMMAND tst_detectionmodel)
+
+add_executable(tst_trackmodel
+    TrackModelTest.cpp
+    ${CMAKE_SOURCE_DIR}/models/TrackModel.cpp
+    ${CMAKE_SOURCE_DIR}/models/TrackModel.h)
+target_link_libraries(tst_trackmodel PRIVATE visionlab_core Qt6::Core Qt6::Test)
+target_include_directories(tst_trackmodel PRIVATE ${CMAKE_SOURCE_DIR})
+add_test(NAME trackmodel COMMAND tst_trackmodel)
+
 add_executable(tst_yolodecoding YoloDecodingTest.cpp)
 target_link_libraries(tst_yolodecoding PRIVATE visionlab_detectors Qt6::Core Qt6::Test)
 add_test(NAME yolodecoding COMMAND tst_yolodecoding)
@@ -418,7 +434,7 @@ if(WIN32)
     set(visionlab_tests
         smoke framepacket track visionevent modelconfig iinferenceengine onnxruntimeengine inferenceenginefactory onnxruntimecudaengine inferenceselection pluginmetadata idetector itracker irule rulegeometry roiintrusion linecrossing loitering counting ruleengine ioumatching kalmanboxfilter bytetracktracker detectionrenderer trackrenderer
         yolodecoding yolopreprocess yolodetector ssddecoding motiondetector dummydetector dummyplugin motionplugin faceplugin yoloplugin pluginmanager ivideosource
-        letterbox rulespec eventrepository
+        letterbox rulespec eventrepository detectionmodel trackmodel
         camerasource modemapping boundedqueue latestresult captureworker
         inferenceworker latencywindow statsprobe eventlog visionpipeline
         pipelineoverload pipelinelifecycle cameramanager localecontroller
