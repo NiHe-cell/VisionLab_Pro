@@ -234,6 +234,8 @@ add_library(visionlab_rendering STATIC
     rendering/DetectionRenderer.cpp
     rendering/TrackRenderer.h
     rendering/TrackRenderer.cpp
+    rendering/Letterbox.h
+    rendering/Letterbox.cpp
 )
 target_link_libraries(visionlab_rendering PUBLIC visionlab_core)
 
