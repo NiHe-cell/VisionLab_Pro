@@ -10,6 +10,7 @@
 #include <QDir>
 #include <QMetaObject>
 #include <QMutexLocker>
+#include <QStandardPaths>
 #include <QStringList>
 
 #include "inference/InferenceEngineFactory.h"
@@ -18,6 +19,7 @@
 #include "analytics/IRule.h"
 #include "analytics/RuleEngine.h"
 #include "analytics/RuleFactory.h"
+#include "storage/SqliteEventRepository.h"
 #include "tracking/ByteTrackTracker.h"
 #include "tracking/ITracker.h"
 #include "video/CameraSource.h"
@@ -72,6 +74,13 @@ void warnInvalidInferenceEnv()
     }
 }
 
+std::filesystem::path defaultEventDbPath()
+{
+    const QString dir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    QDir().mkpath(dir);
+    return std::filesystem::path(QDir(dir).filePath(QStringLiteral("events.sqlite")).toStdWString());
+}
+
 QString modeLabel(visionlab::DetectionMode mode)
 {
     const auto label = visionlab::labelForDetectionMode(mode);
@@ -83,6 +92,8 @@ QString modeLabel(visionlab::DetectionMode mode)
 CameraManager::CameraManager()
     : CameraManager(std::make_unique<visionlab::CameraSource>(0))
 {
+    if (m_writer && !m_writer->start(defaultEventDbPath()))
+        qWarning() << "CameraManager: event database open failed";
 }
 
 CameraManager::CameraManager(std::unique_ptr<visionlab::IVideoSource> source)
@@ -91,6 +102,8 @@ CameraManager::CameraManager(std::unique_ptr<visionlab::IVideoSource> source)
     m_session.inference = visionlab::inferenceSelectionFromEnv();
     assembleFromPlugins(std::move(source));
     bindPresentedCallback();
+    m_writer = std::make_unique<visionlab::EventWriter>(
+        std::make_unique<visionlab::SqliteEventRepository>());
 }
 
 CameraManager::CameraManager(std::unique_ptr<visionlab::VisionPipeline> pipeline)
@@ -101,12 +114,16 @@ CameraManager::CameraManager(std::unique_ptr<visionlab::VisionPipeline> pipeline
     if (m_pipeline)
         m_pipeline->setMode(visionlab::DetectionMode::Face);
     bindPresentedCallback();
+    m_writer = std::make_unique<visionlab::EventWriter>(
+        std::make_unique<visionlab::SqliteEventRepository>());
 }
 
 CameraManager::~CameraManager()
 {
     if (m_pipeline)
         m_pipeline->stop();
+    if (m_writer)
+        m_writer->stop();
 }
 
 void CameraManager::assembleFromPlugins(std::unique_ptr<visionlab::IVideoSource> source)
@@ -193,6 +210,7 @@ bool CameraManager::start()
         qWarning() << "CameraManager: 打开视频源失败";
         return false;
     }
+    m_persistedMaxEventId = 0;
     return true;
 }
 
@@ -290,6 +308,32 @@ bool CameraManager::applyRuleSpecs(std::vector<visionlab::RuleSpec> specs)
     return true;
 }
 
+void CameraManager::setEventDatabasePath(const std::filesystem::path& path)
+{
+    if (!m_writer)
+    {
+        m_writer = std::make_unique<visionlab::EventWriter>(
+            std::make_unique<visionlab::SqliteEventRepository>());
+    }
+    if (!m_writer->start(path))
+        qWarning() << "CameraManager: event database open failed";
+}
+
+void CameraManager::queryEvents(const visionlab::EventQuery& query,
+                               QObject* receiver,
+                               std::function<void(std::vector<visionlab::StoredEvent>)> onResult)
+{
+    if (m_writer)
+        m_writer->requestQuery(query, receiver, std::move(onResult));
+}
+
+std::vector<visionlab::VisionEvent> CameraManager::recentEvents() const
+{
+    if (!m_pipeline)
+        return {};
+    return m_pipeline->recentEvents();
+}
+
 void CameraManager::injectRules()
 {
     visionlab::RuleEngine* engine = m_pipeline ? m_pipeline->ruleEngine() : nullptr;
@@ -328,6 +372,17 @@ void CameraManager::notifyFrame()
     {
         QMutexLocker lock(&m_frameMutex);
         m_frame = std::move(next);
+    }
+
+    if (m_writer)
+    {
+        for (const visionlab::VisionEvent& event : m_pipeline->recentEvents())
+        {
+            if (event.eventId <= m_persistedMaxEventId)
+                continue;
+            m_writer->enqueue(event);
+            m_persistedMaxEventId = event.eventId;
+        }
     }
     emit frameChanged();
 }

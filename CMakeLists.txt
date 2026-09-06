@@ -123,6 +123,8 @@ add_library(visionlab_storage STATIC
     storage/IEventRepository.h
     storage/SqliteEventRepository.h
     storage/SqliteEventRepository.cpp
+    storage/EventWriter.h
+    storage/EventWriter.cpp
 )
 target_include_directories(visionlab_storage PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(visionlab_storage PUBLIC visionlab_core Qt6::Sql)
@@ -394,6 +396,7 @@ target_link_libraries(appVisionLab PRIVATE
     visionlab_inference
     visionlab_video
     visionlab_pipeline
+    visionlab_storage
     Qt6::Core
     Qt6::Widgets
     Qt6::Quick

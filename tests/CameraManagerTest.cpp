@@ -1,5 +1,6 @@
 #include <QtTest/QtTest>
 
+#include <filesystem>
 #include <map>
 #include <memory>
 
@@ -7,23 +8,26 @@
 #include <QFile>
 #include <QTemporaryDir>
 
+#include "analytics/RuleEngine.h"
+#include "analytics/RuleSpec.h"
 #include "core/VisionTypes.h"
 #include "fakes/FakeDetector.h"
 #include "fakes/FakeVideoSource.h"
-#include "analytics/RuleEngine.h"
-#include "analytics/RuleSpec.h"
 #include "pipeline/VisionPipeline.h"
+#include "storage/EventQuery.h"
 #include "tracking/ByteTrackTracker.h"
 #include "utilities/CameraManager.h"
 #include "utilities/SessionSettings.h"
 
 using visionlab::ByteTrackTracker;
 using visionlab::DetectionMode;
+using visionlab::EventQuery;
 using visionlab::IDetector;
 using visionlab::RuleEngine;
 using visionlab::RuleKind;
 using visionlab::RuleSpec;
 using visionlab::SessionSettings;
+using visionlab::StoredEvent;
 using visionlab::VisionPipeline;
 
 namespace {
@@ -96,6 +100,7 @@ private slots:
     void applyRuleSpecsThenStartReportsEnabledRules();
     void applyRuleSpecsBatchFailureKeepsPrevious();
     void startStopStartKeepsAppliedRules();
+    void persistFakeRuleEventsToTempDb();
 };
 
 void CameraManagerTest::cleanup()
@@ -291,6 +296,29 @@ void CameraManagerTest::startStopStartKeepsAppliedRules()
     QVERIFY(manager.stop());
     QVERIFY(manager.start());
     QTRY_VERIFY_WITH_TIMEOUT(manager.statsSnapshot().enabledRules == 1, 2000);
+    QVERIFY(manager.stop());
+}
+
+void CameraManagerTest::persistFakeRuleEventsToTempDb()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const auto path = std::filesystem::path(dir.path().toStdWString()) / L"events.sqlite";
+
+    auto source = std::make_unique<FakeVideoSource>(64, "fake:writer", true, true);
+    CameraManager manager(makePipeline(std::move(source)));
+    manager.setEventDatabasePath(path);
+    QVERIFY(manager.applyRuleSpecs({validRoiSpec()}));
+
+    QVERIFY(manager.start());
+    QTRY_VERIFY_WITH_TIMEOUT(!manager.recentEvents().empty(), 2000);
+
+    std::vector<StoredEvent> rows;
+    manager.queryEvents(EventQuery{}, this, [&](std::vector<StoredEvent> result) {
+        rows = std::move(result);
+    });
+    QTRY_VERIFY_WITH_TIMEOUT(!rows.empty(), 2000);
+    QVERIFY(rows.front().wallUtcMs > 0);
     QVERIFY(manager.stop());
 }
 

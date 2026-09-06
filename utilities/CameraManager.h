@@ -1,6 +1,9 @@
 #ifndef CAMERAMANAGER_H
 #define CAMERAMANAGER_H
 
+#include <cstdint>
+#include <filesystem>
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -11,10 +14,13 @@
 
 #include "analytics/RuleSpec.h"
 #include "core/PipelineStats.h"
+#include "core/VisionEvent.h"
 #include "core/VisionTypes.h"
 #include "pipeline/VisionPipeline.h"
 #include "plugin/PluginManager.h"
 #include "plugin/PluginMetadata.h"
+#include "storage/EventQuery.h"
+#include "storage/EventWriter.h"
 #include "utilities/SessionSettings.h"
 #include "video/IVideoSource.h"
 
@@ -56,6 +62,12 @@ public:
     // running 时返回 false 且不改引擎。整批 makeRule 成功才 clear + 注入。
     bool applyRuleSpecs(std::vector<visionlab::RuleSpec> specs);
 
+    void setEventDatabasePath(const std::filesystem::path& path);
+    void queryEvents(const visionlab::EventQuery& query,
+                     QObject* receiver,
+                     std::function<void(std::vector<visionlab::StoredEvent>)> onResult);
+    std::vector<visionlab::VisionEvent> recentEvents() const;
+
     QImage frame() const;
     visionlab::PipelineStats statsSnapshot() const;
 
@@ -75,6 +87,8 @@ private:
     visionlab::SessionSettings m_session;
     std::vector<visionlab::RuleSpec> m_ruleSpecs;
     std::unique_ptr<visionlab::VisionPipeline> m_pipeline;
+    std::unique_ptr<visionlab::EventWriter> m_writer;
+    std::uint64_t m_persistedMaxEventId = 0;
     mutable QMutex m_frameMutex;
     QImage m_frame;
 };

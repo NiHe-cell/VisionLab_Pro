@@ -198,6 +198,10 @@ target_link_libraries(tst_rulemodel PRIVATE visionlab_analytics Qt6::Core Qt6::T
 target_include_directories(tst_rulemodel PRIVATE ${CMAKE_SOURCE_DIR})
 add_test(NAME rulemodel COMMAND tst_rulemodel)
 
+add_executable(tst_eventwriter EventWriterTest.cpp)
+target_link_libraries(tst_eventwriter PRIVATE visionlab_storage Qt6::Core Qt6::Test Qt6::Sql)
+add_test(NAME eventwriter COMMAND tst_eventwriter)
+
 add_executable(tst_yolodecoding YoloDecodingTest.cpp)
 target_link_libraries(tst_yolodecoding PRIVATE visionlab_detectors Qt6::Core Qt6::Test)
 add_test(NAME yolodecoding COMMAND tst_yolodecoding)
@@ -348,9 +352,11 @@ target_link_libraries(tst_cameramanager PRIVATE
     visionlab_plugin
     visionlab_inference
     visionlab_video
+    visionlab_storage
     Qt6::Core
     Qt6::Gui
-    Qt6::Test)
+    Qt6::Test
+    Qt6::Sql)
 target_include_directories(tst_cameramanager PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_SOURCE_DIR})
 target_compile_definitions(tst_cameramanager PRIVATE
     VISIONLAB_BUILD_PLUGINS_DIR="${CMAKE_BINARY_DIR}/plugins")
@@ -468,7 +474,7 @@ if(WIN32)
     set(visionlab_tests
         smoke framepacket track visionevent modelconfig iinferenceengine onnxruntimeengine inferenceenginefactory onnxruntimecudaengine inferenceselection pluginmetadata idetector itracker irule rulegeometry roiintrusion linecrossing loitering counting ruleengine ioumatching kalmanboxfilter bytetracktracker detectionrenderer trackrenderer
         yolodecoding yolopreprocess yolodetector ssddecoding motiondetector dummydetector dummyplugin motionplugin faceplugin yoloplugin pluginmanager ivideosource
-        letterbox rulespec eventrepository detectionmodel trackmodel eventmodel performancemodel pluginmodel rulemodel
+        letterbox rulespec eventrepository detectionmodel trackmodel eventmodel performancemodel pluginmodel rulemodel eventwriter
         camerasource modemapping boundedqueue latestresult captureworker
         inferenceworker latencywindow statsprobe eventlog visionpipeline
         pipelineoverload pipelinelifecycle cameramanager localecontroller
