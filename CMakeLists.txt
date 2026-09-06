@@ -372,6 +372,11 @@ qt_add_qml_module(appVisionLab
         views/ControlButton.qml
         views/CameraView.qml
         views/I18n.qml
+        views/SideNav.qml
+        views/MonitorPage.qml
+        views/EventsPage.qml
+        views/PerformancePage.qml
+        views/SettingsPage.qml
 
     SOURCES
         controllers/WindowController.h controllers/WindowController.cpp
@@ -379,6 +384,13 @@ qt_add_qml_module(appVisionLab
         controllers/LocaleController.h controllers/LocaleController.cpp
         utilities/CameraManager.h utilities/CameraManager.cpp
         utilities/CameraImageProvider.h utilities/CameraImageProvider.cpp
+        models/DetectionModel.h models/DetectionModel.cpp
+        models/TrackModel.h models/TrackModel.cpp
+        models/EventModel.h models/EventModel.cpp
+        models/EventTypeFilterModel.h models/EventTypeFilterModel.cpp
+        models/PerformanceModel.h models/PerformanceModel.cpp
+        models/PluginModel.h models/PluginModel.cpp
+        models/RuleModel.h models/RuleModel.cpp
 
     RESOURCES
         assets/logo.png
@@ -397,6 +409,7 @@ target_link_libraries(appVisionLab PRIVATE
     visionlab_video
     visionlab_pipeline
     visionlab_storage
+    visionlab_analytics
     Qt6::Core
     Qt6::Widgets
     Qt6::Quick

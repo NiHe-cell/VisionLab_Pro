@@ -202,6 +202,34 @@ add_executable(tst_eventwriter EventWriterTest.cpp)
 target_link_libraries(tst_eventwriter PRIVATE visionlab_storage Qt6::Core Qt6::Test Qt6::Sql)
 add_test(NAME eventwriter COMMAND tst_eventwriter)
 
+add_executable(tst_visioncontroller
+    VisionControllerTest.cpp
+    ${CMAKE_SOURCE_DIR}/controllers/VisionController.cpp
+    ${CMAKE_SOURCE_DIR}/controllers/VisionController.h
+    ${CMAKE_SOURCE_DIR}/utilities/CameraManager.cpp
+    ${CMAKE_SOURCE_DIR}/utilities/CameraManager.h
+    ${CMAKE_SOURCE_DIR}/models/DetectionModel.cpp
+    ${CMAKE_SOURCE_DIR}/models/TrackModel.cpp
+    ${CMAKE_SOURCE_DIR}/models/EventModel.cpp
+    ${CMAKE_SOURCE_DIR}/models/EventTypeFilterModel.cpp
+    ${CMAKE_SOURCE_DIR}/models/PerformanceModel.cpp
+    ${CMAKE_SOURCE_DIR}/models/PluginModel.cpp
+    ${CMAKE_SOURCE_DIR}/models/RuleModel.cpp)
+target_link_libraries(tst_visioncontroller PRIVATE
+    visionlab_pipeline
+    visionlab_plugin
+    visionlab_inference
+    visionlab_video
+    visionlab_storage
+    visionlab_analytics
+    Qt6::Core
+    Qt6::Gui
+    Qt6::Test
+    Qt6::Sql)
+target_include_directories(tst_visioncontroller PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_SOURCE_DIR})
+add_test(NAME visioncontroller COMMAND tst_visioncontroller)
+visionlab_copy_ort_dlls(tst_visioncontroller)
+
 add_executable(tst_yolodecoding YoloDecodingTest.cpp)
 target_link_libraries(tst_yolodecoding PRIVATE visionlab_detectors Qt6::Core Qt6::Test)
 add_test(NAME yolodecoding COMMAND tst_yolodecoding)
@@ -474,7 +502,7 @@ if(WIN32)
     set(visionlab_tests
         smoke framepacket track visionevent modelconfig iinferenceengine onnxruntimeengine inferenceenginefactory onnxruntimecudaengine inferenceselection pluginmetadata idetector itracker irule rulegeometry roiintrusion linecrossing loitering counting ruleengine ioumatching kalmanboxfilter bytetracktracker detectionrenderer trackrenderer
         yolodecoding yolopreprocess yolodetector ssddecoding motiondetector dummydetector dummyplugin motionplugin faceplugin yoloplugin pluginmanager ivideosource
-        letterbox rulespec eventrepository detectionmodel trackmodel eventmodel performancemodel pluginmodel rulemodel eventwriter
+        letterbox rulespec eventrepository detectionmodel trackmodel eventmodel performancemodel pluginmodel rulemodel eventwriter visioncontroller
         camerasource modemapping boundedqueue latestresult captureworker
         inferenceworker latencywindow statsprobe eventlog visionpipeline
         pipelineoverload pipelinelifecycle cameramanager localecontroller

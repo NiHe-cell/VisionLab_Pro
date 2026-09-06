@@ -223,6 +223,8 @@ bool CameraManager::stop()
     {
         QMutexLocker lock(&m_frameMutex);
         m_frame = QImage();
+        m_detections.clear();
+        m_tracks.clear();
     }
     emit frameCleared();
     return true;
@@ -334,6 +336,18 @@ std::vector<visionlab::VisionEvent> CameraManager::recentEvents() const
     return m_pipeline->recentEvents();
 }
 
+std::vector<visionlab::Detection> CameraManager::latestDetections() const
+{
+    QMutexLocker lock(&m_frameMutex);
+    return m_detections;
+}
+
+std::vector<visionlab::Track> CameraManager::latestTracks() const
+{
+    QMutexLocker lock(&m_frameMutex);
+    return m_tracks;
+}
+
 void CameraManager::injectRules()
 {
     visionlab::RuleEngine* engine = m_pipeline ? m_pipeline->ruleEngine() : nullptr;
@@ -372,6 +386,8 @@ void CameraManager::notifyFrame()
     {
         QMutexLocker lock(&m_frameMutex);
         m_frame = std::move(next);
+        m_detections = presented->detections;
+        m_tracks = presented->tracks;
     }
 
     if (m_writer)

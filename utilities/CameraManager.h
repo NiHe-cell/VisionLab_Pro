@@ -13,7 +13,9 @@
 #include <QObject>
 
 #include "analytics/RuleSpec.h"
+#include "core/Detection.h"
 #include "core/PipelineStats.h"
+#include "core/Track.h"
 #include "core/VisionEvent.h"
 #include "core/VisionTypes.h"
 #include "pipeline/VisionPipeline.h"
@@ -67,6 +69,8 @@ public:
                      QObject* receiver,
                      std::function<void(std::vector<visionlab::StoredEvent>)> onResult);
     std::vector<visionlab::VisionEvent> recentEvents() const;
+    std::vector<visionlab::Detection> latestDetections() const;
+    std::vector<visionlab::Track> latestTracks() const;
 
     QImage frame() const;
     visionlab::PipelineStats statsSnapshot() const;
@@ -91,6 +95,8 @@ private:
     std::uint64_t m_persistedMaxEventId = 0;
     mutable QMutex m_frameMutex;
     QImage m_frame;
+    std::vector<visionlab::Detection> m_detections;
+    std::vector<visionlab::Track> m_tracks;
 };
 
 #endif // CAMERAMANAGER_H

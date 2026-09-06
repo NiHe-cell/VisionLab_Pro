@@ -69,6 +69,33 @@ Item {
         anchors.verticalCenter: parent.verticalCenter
 
         Rectangle {
+            width: 88
+            height: 22
+            radius: 6
+            color: VisionController.running ? "#FF637E" : "#155DFC"
+            anchors.verticalCenter: parent.verticalCenter
+
+            Text {
+                anchors.centerIn: parent
+                text: VisionController.running ? I18n.stopCamera : I18n.startCamera
+                color: "white"
+                font.pixelSize: 11
+                font.bold: true
+            }
+
+            MouseArea {
+                anchors.fill: parent
+                cursorShape: Qt.PointingHandCursor
+                onClicked: {
+                    if (!VisionController.running)
+                        VisionController.startCamera()
+                    else
+                        VisionController.stopCamera()
+                }
+            }
+        }
+
+        Rectangle {
             width: 40
             height: 22
             radius: 6

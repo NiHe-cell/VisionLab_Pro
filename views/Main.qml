@@ -1,9 +1,4 @@
-/*
- * Author - Muhammed Suwaneh
-*/
-
 import QtQuick
-import QtQuick.Controls
 import QtQuick.Window
 import QtQuick.Layouts
 
@@ -15,8 +10,6 @@ Window {
     flags: Qt.FramelessWindowHint | Qt.Window
     color: "transparent"
 
-    property string currentSelectedProcessor: "Face Detection"
-
     Rectangle {
         id: appFrame
         anchors.fill: parent
@@ -24,108 +17,36 @@ Window {
         radius: 12
         clip: true
 
-        GridLayout {
+        ColumnLayout {
             anchors.fill: parent
-            rows: 3
-            rowSpacing: 0
-            columnSpacing: 0
+            spacing: 0
 
-            // TITLE BAR
             TitleBar {
-                id: titleBar
-                Layout.row: 0
                 Layout.fillWidth: true
                 Layout.preferredHeight: 48
                 z: 10
             }
 
-            // CONTROLS BAR
-            Rectangle {
-                id: controlsBar
-                Layout.row: 1
+            RowLayout {
                 Layout.fillWidth: true
-                Layout.preferredHeight: 56
-                color: "#CAD5E2"
-                border.color: "#d1d5db"
+                Layout.fillHeight: true
+                spacing: 0
 
-                RowLayout {
-                    anchors.fill: parent
-                    anchors.margins: 12
-                    spacing: 8
-
-                    Rectangle {
-                        Layout.preferredWidth: 120
-                        Layout.preferredHeight: 32
-                        radius: 8
-                        color: VisionController.running ? "#FF637E" : "#155DFC"
-                        border.color: "#cad5e2"
-
-                        Text {
-                            anchors.centerIn: parent
-                            text: VisionController.running ? I18n.stopCamera : I18n.startCamera
-                            font.pixelSize: 12
-                            color: "#fff"
-                        }
-
-                        MouseArea {
-                            anchors.fill: parent
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: {
-
-                                if(!VisionController.running) VisionController.startCamera();
-                                else VisionController.stopCamera();
-                            }
-                        }
-                    }
-
-                    Item {
-                        Layout.fillWidth: true
-                    }
-
-                    Repeater
-                    {
-                        model: [ "Face Detection", "Object Detection", "Motion Detection" ]
-
-                        Rectangle {
-                            Layout.preferredWidth: 120
-                            Layout.preferredHeight: 32
-                            radius: 8
-                            color: root.currentSelectedProcessor === modelData ? "#74D4FF" : "#e5e7eb"
-                            border.color: "#cad5e2"
-                            opacity: mouse.containsMouse ? 0.85 : 1
-
-                            Text {
-                                anchors.centerIn: parent
-                                text: I18n.modeLabel(modelData)
-                                font.pixelSize: 12
-                                color: root.currentSelectedProcessor === modelData ?  "#fff" : "#1C69A8"
-                            }
-
-                            MouseArea {
-                                id: mouse
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked:
-                                {
-                                    root.currentSelectedProcessor = modelData
-                                    VisionController.setMode(modelData)
-                                }
-                            }
-                        }
-                    }
+                SideNav {
+                    Layout.preferredWidth: 168
+                    Layout.fillHeight: true
                 }
-            }
 
-            // CAMERA View
-            CameraView
-            {
-                id: cameraView
-                Layout.row: 2
-                Layout.topMargin: 10
-                Layout.alignment: Qt.AlignHCenter
-                Layout.preferredWidth: parent.width - 25
-                Layout.preferredHeight: parent.height - (controlsBar.height + titleBar.height)
+                StackLayout {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    currentIndex: VisionController.currentPage
+
+                    MonitorPage {}
+                    EventsPage {}
+                    PerformancePage {}
+                    SettingsPage {}
+                }
             }
         }
     }
