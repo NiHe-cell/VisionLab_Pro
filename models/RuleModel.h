@@ -30,8 +30,8 @@ public:
 
     bool addSpec(visionlab::RuleSpec spec);
     bool removeAt(int row);
-    bool setEnabled(int row, bool enabled);
-    bool setLoiterSeconds(int row, double seconds);
+    Q_INVOKABLE bool setEnabled(int row, bool enabled);
+    Q_INVOKABLE bool setLoiterSeconds(int row, double seconds);
     std::vector<visionlab::RuleSpec> specs() const;
     void replaceAll(std::vector<visionlab::RuleSpec> specs);
 

@@ -29,7 +29,7 @@ public:
     void setPlugins(const std::vector<visionlab::PluginMetadata>& plugins,
                     const std::vector<std::string>& errors);
 
-    QStringList loadErrors() const;
+    Q_INVOKABLE QStringList loadErrors() const;
 
     int rowCount(const QModelIndex& parent = QModelIndex()) const override;
     QVariant data(const QModelIndex& index, int role) const override;

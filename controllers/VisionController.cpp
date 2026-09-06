@@ -4,8 +4,10 @@
 #include <QTimer>
 
 #include "core/VisionTypes.h"
+#include "inference/InferenceTypes.h"
 #include "rendering/Letterbox.h"
 #include "storage/EventQuery.h"
+#include "utilities/SessionSettings.h"
 
 VisionController::VisionController(CameraManager* cam, QObject* parent)
     : QObject(parent)
@@ -223,6 +225,115 @@ void VisionController::setEventTypeFilter(int filter)
         return;
     m_eventFilterModel->setTypeFilter(filter);
     emit eventTypeFilterChanged();
+}
+
+void VisionController::setSettingsError(const QString& error)
+{
+    if (m_lastSettingsError == error)
+        return;
+    m_lastSettingsError = error;
+    emit lastSettingsErrorChanged();
+}
+
+QString VisionController::lastSettingsError() const
+{
+    return m_lastSettingsError;
+}
+
+bool VisionController::applyUiSettings(int backend, int precision, int deviceId,
+                                       float confidence, float nms, bool tracking)
+{
+    if (m_running)
+    {
+        setSettingsError(QStringLiteral("先停止摄像头"));
+        return false;
+    }
+    if (!m_camera)
+    {
+        setSettingsError(QStringLiteral("摄像头未就绪"));
+        return false;
+    }
+
+    visionlab::SessionSettings settings = m_camera->sessionSettings();
+    settings.inference.backend = static_cast<visionlab::InferenceBackend>(backend);
+    settings.inference.precision = static_cast<visionlab::InferencePrecision>(precision);
+    settings.inference.deviceId = deviceId;
+    settings.confidenceThreshold = confidence;
+    settings.nmsThreshold = nms;
+    settings.trackingEnabled = tracking;
+
+    if (!m_camera->applySessionSettings(settings))
+    {
+        setSettingsError(QStringLiteral("重建失败，已恢复原管线"));
+        return false;
+    }
+
+    setSettingsError({});
+    m_pluginModel->setPlugins(m_camera->pluginMetadata(), m_camera->pluginLoadErrors());
+    return true;
+}
+
+bool VisionController::applyUiRules()
+{
+    if (m_running)
+    {
+        setSettingsError(QStringLiteral("先停止摄像头"));
+        return false;
+    }
+    if (!m_camera)
+    {
+        setSettingsError(QStringLiteral("规则未应用"));
+        return false;
+    }
+    if (!m_camera->applyRuleSpecs(m_ruleModel->specs()))
+    {
+        setSettingsError(QStringLiteral("规则未应用"));
+        return false;
+    }
+    setSettingsError({});
+    return true;
+}
+
+int VisionController::uiBackend() const
+{
+    if (!m_camera)
+        return 0;
+    return static_cast<int>(m_camera->sessionSettings().inference.backend);
+}
+
+int VisionController::uiPrecision() const
+{
+    if (!m_camera)
+        return 0;
+    return static_cast<int>(m_camera->sessionSettings().inference.precision);
+}
+
+int VisionController::uiDeviceId() const
+{
+    if (!m_camera)
+        return 0;
+    return m_camera->sessionSettings().inference.deviceId;
+}
+
+float VisionController::uiConfidence() const
+{
+    if (!m_camera)
+        return 0.25F;
+    return m_camera->sessionSettings().confidenceThreshold;
+}
+
+float VisionController::uiNms() const
+{
+    if (!m_camera)
+        return 0.45F;
+    return m_camera->sessionSettings().nmsThreshold;
+}
+
+bool VisionController::uiTracking() const
+{
+    if (!m_camera)
+        return true;
+    return m_camera->sessionSettings().trackingEnabled;
 }
 
 visionlab::RuleKind VisionController::kindForTool(DrawTool tool) const

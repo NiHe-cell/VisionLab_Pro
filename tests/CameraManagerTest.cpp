@@ -101,6 +101,7 @@ private slots:
     void applyRuleSpecsBatchFailureKeepsPrevious();
     void startStopStartKeepsAppliedRules();
     void persistFakeRuleEventsToTempDb();
+    void applyEmptyPluginDirRestoresBackupPipeline();
 };
 
 void CameraManagerTest::cleanup()
@@ -319,6 +320,29 @@ void CameraManagerTest::persistFakeRuleEventsToTempDb()
     });
     QTRY_VERIFY_WITH_TIMEOUT(!rows.empty(), 2000);
     QVERIFY(rows.front().wallUtcMs > 0);
+    QVERIFY(manager.stop());
+}
+
+void CameraManagerTest::applyEmptyPluginDirRestoresBackupPipeline()
+{
+    qputenv("VISIONLAB_PLUGIN_DIR", VISIONLAB_BUILD_PLUGINS_DIR);
+    auto source = std::make_unique<FakeVideoSource>(64, "fake:backup", true, true);
+    CameraManager manager(std::move(source));
+
+    QTemporaryDir empty;
+    QVERIFY(empty.isValid());
+    qputenv("VISIONLAB_PLUGIN_DIR", empty.path().toUtf8());
+
+    SessionSettings next = manager.sessionSettings();
+    next.trackingEnabled = false;
+    QVERIFY(!manager.applySessionSettings(next));
+    QVERIFY(manager.sessionSettings().trackingEnabled);
+
+    QSignalSpy changed(&manager, &CameraManager::frameChanged);
+    manager.setMode(DetectionMode::Face);
+    QVERIFY(manager.start());
+    QVERIFY(changed.wait(2000));
+    QVERIFY(!manager.frame().isNull());
     QVERIFY(manager.stop());
 }
 

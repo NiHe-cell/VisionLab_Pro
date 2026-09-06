@@ -255,12 +255,28 @@ bool CameraManager::applySessionSettings(const visionlab::SessionSettings& setti
     if (!m_pipeline)
         return false;
 
-    auto source = m_pipeline->releaseSource();
+    auto backup = std::move(m_pipeline);
+    const bool backupHadDetectors = backup->hasDetectors();
+    auto source = backup->releaseSource();
     if (!source)
+    {
+        m_pipeline = std::move(backup);
         return false;
+    }
 
+    const visionlab::SessionSettings previous = m_session;
     m_session = settings;
     assembleFromPlugins(std::move(source));
+    if (!m_pipeline->hasDetectors() && backupHadDetectors)
+    {
+        backup->adoptSource(m_pipeline->releaseSource());
+        m_pipeline = std::move(backup);
+        m_session = previous;
+        injectRules();
+        bindPresentedCallback();
+        return false;
+    }
+
     bindPresentedCallback();
     return true;
 }

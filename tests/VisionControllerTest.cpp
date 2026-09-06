@@ -52,6 +52,7 @@ private slots:
     void finishDrawRoiThenStartEnablesRules();
     void beginDrawIgnoredWhileRunning();
     void eventTypeFilterChangesProxyRowCount();
+    void applyUiSettingsRejectedWhileRunning();
 };
 
 void VisionControllerTest::startFillsDetectionModel()
@@ -162,6 +163,19 @@ void VisionControllerTest::eventTypeFilterChangesProxyRowCount()
 
     controller.setEventTypeFilter(-1);
     QCOMPARE(controller.eventFilterModel()->rowCount(), 2);
+}
+
+void VisionControllerTest::applyUiSettingsRejectedWhileRunning()
+{
+    CameraManager camera(makePipeline());
+    VisionController controller(&camera);
+    controller.startCamera();
+    QVERIFY(controller.running());
+    QVERIFY(!controller.applyUiSettings(0, 0, 0, 0.25F, 0.45F, true));
+    QCOMPARE(controller.lastSettingsError(), QStringLiteral("先停止摄像头"));
+    QVERIFY(!controller.applyUiRules());
+    QCOMPARE(controller.lastSettingsError(), QStringLiteral("先停止摄像头"));
+    controller.stopCamera();
 }
 
 QTEST_GUILESS_MAIN(VisionControllerTest)

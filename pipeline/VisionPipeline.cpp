@@ -107,6 +107,19 @@ std::unique_ptr<IVideoSource> VisionPipeline::releaseSource()
     return std::move(m_source);
 }
 
+void VisionPipeline::adoptSource(std::unique_ptr<IVideoSource> source)
+{
+    std::lock_guard lock(m_lifecycle);
+    if (m_running)
+        return;
+    m_source = std::move(source);
+}
+
+bool VisionPipeline::hasDetectors() const
+{
+    return !m_detectors.empty();
+}
+
 IDetector* VisionPipeline::currentDetector()
 {
     const auto it = m_detectors.find(m_mode.load());

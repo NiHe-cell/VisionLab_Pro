@@ -3,6 +3,7 @@
 
 #include <QObject>
 #include <QPointF>
+#include <QString>
 #include <QVariantList>
 #include <vector>
 
@@ -38,6 +39,7 @@ class VisionController : public QObject
     Q_PROPERTY(int drawTool READ drawTool NOTIFY drawToolChanged)
     Q_PROPERTY(QVariantList draftPoints READ draftPoints NOTIFY draftPointsChanged)
     Q_PROPERTY(int eventTypeFilter READ eventTypeFilter WRITE setEventTypeFilter NOTIFY eventTypeFilterChanged)
+    Q_PROPERTY(QString lastSettingsError READ lastSettingsError NOTIFY lastSettingsErrorChanged)
 public:
     enum DrawTool
     {
@@ -89,6 +91,17 @@ public:
     int eventTypeFilter() const;
     void setEventTypeFilter(int filter);
 
+    Q_INVOKABLE bool applyUiSettings(int backend, int precision, int deviceId,
+                                     float confidence, float nms, bool tracking);
+    Q_INVOKABLE QString lastSettingsError() const;
+    Q_INVOKABLE bool applyUiRules();
+    Q_INVOKABLE int uiBackend() const;
+    Q_INVOKABLE int uiPrecision() const;
+    Q_INVOKABLE int uiDeviceId() const;
+    Q_INVOKABLE float uiConfidence() const;
+    Q_INVOKABLE float uiNms() const;
+    Q_INVOKABLE bool uiTracking() const;
+
 signals:
     void modeChanged();
     void runningChanged();
@@ -97,6 +110,7 @@ signals:
     void drawToolChanged();
     void draftPointsChanged();
     void eventTypeFilterChanged();
+    void lastSettingsErrorChanged();
 
 private slots:
     void onFrameChanged();
@@ -105,6 +119,7 @@ private slots:
 private:
     visionlab::RuleKind kindForTool(DrawTool tool) const;
     void clearDraft();
+    void setSettingsError(const QString& error);
 
     QString m_mode;
     CameraManager* m_camera;
@@ -114,6 +129,7 @@ private:
     int m_frameHeight = 0;
     DrawTool m_drawTool = None;
     std::vector<cv::Point2f> m_draft;
+    QString m_lastSettingsError;
 
     DetectionModel* m_detectionModel = nullptr;
     TrackModel* m_trackModel = nullptr;

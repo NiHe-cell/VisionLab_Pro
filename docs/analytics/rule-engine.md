@@ -211,6 +211,16 @@ The engine is owned by `VisionPipeline`, not created by plugins.
 `detectors/`, `plugins/`, and `tracking/` must not include analytics
 headers.
 
+## Phase 8 UI
+
+The Monitor page draws `RuleSpec` geometry in QML (`RuleOverlay`) using
+letterbox mapping. Overlay paths never enter `DetectionRenderer` /
+`TrackRenderer`. Users add polygons and directed segments while stopped;
+`commitRulesToEngine` / `startCamera` call
+`CameraManager::applyRuleSpecs` only when the pipeline is not running.
+`enabled` and `loiterSeconds` edits on the Settings page also require a
+stopped Apply. Running the camera makes draw tools and Apply no-ops.
+
 ## Known V1 limits
 
 - Foot-point inside can miss a large box that only overlaps the ROI

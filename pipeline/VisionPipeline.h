@@ -59,6 +59,9 @@ public:
 
     // 仅在 !isRunning() 时有效。取出视频源供宿主按新会话设置重建管线。
     std::unique_ptr<IVideoSource> releaseSource();
+    // 仅在 !isRunning() 时有效。把视频源交回本管线（assemble 失败恢复 backup）。
+    void adoptSource(std::unique_ptr<IVideoSource> source);
+    bool hasDetectors() const;
 
     // 在推理线程、publish 之后调用。回调不得做 GUI 工作；编排层应 QueuedConnection 切回 GUI。
     void setPresentedCallback(std::function<void()> callback);
