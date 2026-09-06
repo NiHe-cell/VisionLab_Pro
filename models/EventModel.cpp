@@ -1,6 +1,7 @@
 #include "models/EventModel.h"
 
 #include <QDateTime>
+#include <QTimeZone>
 
 EventModel::EventModel(QObject* parent)
     : QAbstractListModel(parent)
@@ -31,6 +32,9 @@ EventModel::Row EventModel::fromEvent(const visionlab::VisionEvent& event,
     row.countOut = event.countOut;
     row.occupancy = event.occupancy;
     row.frameId = event.frameId;
+    row.timeText = QDateTime::fromMSecsSinceEpoch(wallUtcMs, QTimeZone::UTC)
+                       .toLocalTime()
+                       .toString(QStringLiteral("yyyy-MM-dd HH:mm:ss"));
     return row;
 }
 
@@ -114,6 +118,8 @@ QVariant EventModel::data(const QModelIndex& index, int role) const
         return QVariant::fromValue(row.occupancy);
     case FrameIdRole:
         return QVariant::fromValue(row.frameId);
+    case TimeTextRole:
+        return row.timeText;
     default:
         return {};
     }
@@ -136,5 +142,6 @@ QHash<int, QByteArray> EventModel::roleNames() const
         {CountOutRole, "countOut"},
         {OccupancyRole, "occupancy"},
         {FrameIdRole, "frameId"},
+        {TimeTextRole, "timeText"},
     };
 }

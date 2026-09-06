@@ -1,5 +1,8 @@
 #include <QtTest/QtTest>
 
+#include <QDateTime>
+#include <QTimeZone>
+
 #include "core/VisionEvent.h"
 #include "models/EventModel.h"
 #include "models/EventTypeFilterModel.h"
@@ -42,6 +45,7 @@ private slots:
     void emptySnapshotDoesNotChangeCount();
     void filterShowsOnlyLoitering();
     void historyPrefillsRowIdAndWallClock();
+    void timeTextFormatsLocalWallClock();
 };
 
 void EventModelTest::ingestAppendsOnlyNewIds()
@@ -157,6 +161,22 @@ void EventModelTest::historyPrefillsRowIdAndWallClock()
     QCOMPARE(model.data(model.index(1, 0), EventModel::SessionEventIdRole).toULongLong(),
              quint64{1});
     QCOMPARE(model.data(model.index(1, 0), EventModel::RowIdRole).toLongLong(), qint64{0});
+}
+
+void EventModelTest::timeTextFormatsLocalWallClock()
+{
+    EventModel model;
+    StoredEvent stored;
+    stored.rowId = 1;
+    stored.wallUtcMs = 1'700'000'000'000;
+    stored.event = makeEvent(11, EventType::Counting);
+    model.ingest({}, {stored});
+
+    const QString expected = QDateTime::fromMSecsSinceEpoch(1'700'000'000'000, QTimeZone::UTC)
+                                 .toLocalTime()
+                                 .toString(QStringLiteral("yyyy-MM-dd HH:mm:ss"));
+    QCOMPARE(model.data(model.index(0, 0), EventModel::TimeTextRole).toString(), expected);
+    QCOMPARE(model.roleNames().value(EventModel::TimeTextRole), QByteArray("timeText"));
 }
 
 QTEST_GUILESS_MAIN(EventModelTest)

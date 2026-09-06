@@ -5,6 +5,7 @@
 
 #include "core/VisionTypes.h"
 #include "rendering/Letterbox.h"
+#include "storage/EventQuery.h"
 
 VisionController::VisionController(CameraManager* cam, QObject* parent)
     : QObject(parent)
@@ -22,6 +23,11 @@ VisionController::VisionController(CameraManager* cam, QObject* parent)
     {
         m_pluginModel->setPlugins(m_camera->pluginMetadata(), m_camera->pluginLoadErrors());
         connect(m_camera, &CameraManager::frameChanged, this, &VisionController::onFrameChanged);
+        visionlab::EventQuery query;
+        query.limit = 500;
+        m_camera->queryEvents(query, this, [this](std::vector<visionlab::StoredEvent> history) {
+            m_eventModel->ingest({}, history);
+        });
     }
 
     auto* timer = new QTimer(this);
@@ -204,6 +210,19 @@ void VisionController::commitRulesToEngine()
     if (!m_camera)
         return;
     m_camera->applyRuleSpecs(m_ruleModel->specs());
+}
+
+int VisionController::eventTypeFilter() const
+{
+    return m_eventFilterModel->typeFilter();
+}
+
+void VisionController::setEventTypeFilter(int filter)
+{
+    if (m_eventFilterModel->typeFilter() == filter)
+        return;
+    m_eventFilterModel->setTypeFilter(filter);
+    emit eventTypeFilterChanged();
 }
 
 visionlab::RuleKind VisionController::kindForTool(DrawTool tool) const

@@ -37,6 +37,7 @@ class VisionController : public QObject
     Q_PROPERTY(int frameHeight READ frameHeight NOTIFY frameSizeChanged)
     Q_PROPERTY(int drawTool READ drawTool NOTIFY drawToolChanged)
     Q_PROPERTY(QVariantList draftPoints READ draftPoints NOTIFY draftPointsChanged)
+    Q_PROPERTY(int eventTypeFilter READ eventTypeFilter WRITE setEventTypeFilter NOTIFY eventTypeFilterChanged)
 public:
     enum DrawTool
     {
@@ -85,6 +86,9 @@ public:
     Q_INVOKABLE void cancelDraw();
     Q_INVOKABLE void commitRulesToEngine();
 
+    int eventTypeFilter() const;
+    void setEventTypeFilter(int filter);
+
 signals:
     void modeChanged();
     void runningChanged();
@@ -92,6 +96,7 @@ signals:
     void frameSizeChanged();
     void drawToolChanged();
     void draftPointsChanged();
+    void eventTypeFilterChanged();
 
 private slots:
     void onFrameChanged();

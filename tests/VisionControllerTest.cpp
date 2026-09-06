@@ -5,6 +5,7 @@
 
 #include "analytics/RuleEngine.h"
 #include "analytics/RuleSpec.h"
+#include "core/VisionEvent.h"
 #include "core/VisionTypes.h"
 #include "fakes/FakeDetector.h"
 #include "fakes/FakeVideoSource.h"
@@ -50,6 +51,7 @@ private slots:
     void rejectsLetterboxMargin();
     void finishDrawRoiThenStartEnablesRules();
     void beginDrawIgnoredWhileRunning();
+    void eventTypeFilterChangesProxyRowCount();
 };
 
 void VisionControllerTest::startFillsDetectionModel()
@@ -138,6 +140,28 @@ void VisionControllerTest::beginDrawIgnoredWhileRunning()
     QCOMPARE(controller.drawTool(), static_cast<int>(VisionController::None));
 
     controller.stopCamera();
+}
+
+void VisionControllerTest::eventTypeFilterChangesProxyRowCount()
+{
+    CameraManager camera(makePipeline());
+    VisionController controller(&camera);
+
+    visionlab::VisionEvent roi;
+    roi.eventId = 1;
+    roi.type = visionlab::EventType::RoiIntrusion;
+    visionlab::VisionEvent loiter;
+    loiter.eventId = 2;
+    loiter.type = visionlab::EventType::Loitering;
+    controller.eventModel()->ingest({roi, loiter});
+    QCOMPARE(controller.eventFilterModel()->rowCount(), 2);
+
+    controller.setEventTypeFilter(static_cast<int>(visionlab::EventType::Loitering));
+    QCOMPARE(controller.eventTypeFilter(), static_cast<int>(visionlab::EventType::Loitering));
+    QCOMPARE(controller.eventFilterModel()->rowCount(), 1);
+
+    controller.setEventTypeFilter(-1);
+    QCOMPARE(controller.eventFilterModel()->rowCount(), 2);
 }
 
 QTEST_GUILESS_MAIN(VisionControllerTest)

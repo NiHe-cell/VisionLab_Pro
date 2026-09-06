@@ -29,6 +29,7 @@ public:
         CountOutRole,
         OccupancyRole,
         FrameIdRole,
+        TimeTextRole,
     };
 
     explicit EventModel(QObject* parent = nullptr);
@@ -58,6 +59,7 @@ private:
         quint64 countOut = 0;
         quint64 occupancy = 0;
         qint64 frameId = 0;
+        QString timeText;
     };
 
     static Row fromEvent(const visionlab::VisionEvent& event, qint64 wallUtcMs, qint64 rowId);
