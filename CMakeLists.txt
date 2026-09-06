@@ -377,6 +377,7 @@ qt_add_qml_module(appVisionLab
         views/EventsPage.qml
         views/PerformancePage.qml
         views/SettingsPage.qml
+        views/RuleOverlay.qml
 
     SOURCES
         controllers/WindowController.h controllers/WindowController.cpp

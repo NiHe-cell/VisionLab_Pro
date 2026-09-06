@@ -1,5 +1,8 @@
 #include "models/RuleModel.h"
 
+#include <QPointF>
+#include <QVariantList>
+
 #include "analytics/RuleFactory.h"
 
 namespace {
@@ -147,6 +150,22 @@ QVariant RuleModel::data(const QModelIndex& index, int role) const
         return spec.b.x;
     case ByRole:
         return spec.b.y;
+    case PointsRole:
+    {
+        QVariantList points;
+        if (spec.kind == visionlab::RuleKind::LineCrossing
+            || spec.kind == visionlab::RuleKind::Counting)
+        {
+            points.append(QPointF(spec.a.x, spec.a.y));
+            points.append(QPointF(spec.b.x, spec.b.y));
+        }
+        else
+        {
+            for (const cv::Point2f& point : spec.polygon)
+                points.append(QPointF(point.x, point.y));
+        }
+        return points;
+    }
     default:
         return {};
     }
@@ -164,5 +183,6 @@ QHash<int, QByteArray> RuleModel::roleNames() const
         {AyRole, "ay"},
         {BxRole, "bx"},
         {ByRole, "by"},
+        {PointsRole, "points"},
     };
 }

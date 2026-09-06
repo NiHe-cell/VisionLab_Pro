@@ -2,7 +2,13 @@
 #define VISIONCONTROLLER_H
 
 #include <QObject>
+#include <QPointF>
+#include <QVariantList>
+#include <vector>
 
+#include <opencv2/core.hpp>
+
+#include "analytics/RuleSpec.h"
 #include "models/DetectionModel.h"
 #include "models/EventModel.h"
 #include "models/EventTypeFilterModel.h"
@@ -29,7 +35,19 @@ class VisionController : public QObject
     Q_PROPERTY(RuleModel* ruleModel READ ruleModel CONSTANT)
     Q_PROPERTY(int frameWidth READ frameWidth NOTIFY frameSizeChanged)
     Q_PROPERTY(int frameHeight READ frameHeight NOTIFY frameSizeChanged)
+    Q_PROPERTY(int drawTool READ drawTool NOTIFY drawToolChanged)
+    Q_PROPERTY(QVariantList draftPoints READ draftPoints NOTIFY draftPointsChanged)
 public:
+    enum DrawTool
+    {
+        None = 0,
+        Roi,
+        Line,
+        Loiter,
+        Count,
+    };
+    Q_ENUM(DrawTool)
+
     explicit VisionController(CameraManager* cam, QObject* parent = nullptr);
 
     QString mode() const;
@@ -53,24 +71,44 @@ public:
 
     int frameWidth() const { return m_frameWidth; }
     int frameHeight() const { return m_frameHeight; }
+    void setFrameSize(int width, int height);
+
+    int drawTool() const { return static_cast<int>(m_drawTool); }
+    QVariantList draftPoints() const;
+
+    Q_INVOKABLE QPointF itemToFrame(qreal x, qreal y, qreal itemW, qreal itemH) const;
+    Q_INVOKABLE QPointF frameToItem(qreal fx, qreal fy, qreal itemW, qreal itemH) const;
+    Q_INVOKABLE bool itemPointInVideo(qreal x, qreal y, qreal itemW, qreal itemH) const;
+    Q_INVOKABLE void beginDraw(DrawTool tool);
+    Q_INVOKABLE void addDrawPoint(qreal itemX, qreal itemY, qreal itemW, qreal itemH);
+    Q_INVOKABLE void finishDraw();
+    Q_INVOKABLE void cancelDraw();
+    Q_INVOKABLE void commitRulesToEngine();
 
 signals:
     void modeChanged();
     void runningChanged();
     void currentPageChanged();
     void frameSizeChanged();
+    void drawToolChanged();
+    void draftPointsChanged();
 
 private slots:
     void onFrameChanged();
     void onStatsTick();
 
 private:
+    visionlab::RuleKind kindForTool(DrawTool tool) const;
+    void clearDraft();
+
     QString m_mode;
     CameraManager* m_camera;
     bool m_running = false;
     int m_currentPage = 0;
     int m_frameWidth = 0;
     int m_frameHeight = 0;
+    DrawTool m_drawTool = None;
+    std::vector<cv::Point2f> m_draft;
 
     DetectionModel* m_detectionModel = nullptr;
     TrackModel* m_trackModel = nullptr;

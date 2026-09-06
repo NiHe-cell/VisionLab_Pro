@@ -23,6 +23,7 @@ public:
         AyRole,
         BxRole,
         ByRole,
+        PointsRole,
     };
 
     explicit RuleModel(QObject* parent = nullptr);

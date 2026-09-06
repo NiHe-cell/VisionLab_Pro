@@ -19,6 +19,11 @@ QtObject {
     readonly property string navPerformance: zh ? "性能" : "Performance"
     readonly property string navSettings: zh ? "设置" : "Settings"
     readonly property string settingsPlaceholder: zh ? "设置页将在后续任务接入" : "Settings arrive in a later task"
+    readonly property string toolRoi: zh ? "ROI" : "ROI"
+    readonly property string toolLine: zh ? "越线" : "Line"
+    readonly property string toolLoiter: zh ? "逗留" : "Loiter"
+    readonly property string toolCount: zh ? "计数" : "Count"
+    readonly property string applyRules: zh ? "应用规则" : "Apply Rules"
 
     function modeLabel(key) {
         if (key === "Face Detection")

@@ -222,6 +222,7 @@ target_link_libraries(tst_visioncontroller PRIVATE
     visionlab_video
     visionlab_storage
     visionlab_analytics
+    visionlab_rendering
     Qt6::Core
     Qt6::Gui
     Qt6::Test
