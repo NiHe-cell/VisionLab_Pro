@@ -15,7 +15,9 @@
 #include "inference/InferenceEngineFactory.h"
 #include "inference/InferenceSelection.h"
 #include "plugin/DetectorCreateRequest.h"
+#include "analytics/IRule.h"
 #include "analytics/RuleEngine.h"
+#include "analytics/RuleFactory.h"
 #include "tracking/ByteTrackTracker.h"
 #include "tracking/ITracker.h"
 #include "video/CameraSource.h"
@@ -166,6 +168,7 @@ void CameraManager::assembleFromPlugins(std::unique_ptr<visionlab::IVideoSource>
         std::move(tracker),
         std::make_unique<visionlab::RuleEngine>());
     m_pipeline->setMode(visionlab::DetectionMode::Face);
+    injectRules();
 }
 
 void CameraManager::bindPresentedCallback()
@@ -184,6 +187,7 @@ bool CameraManager::start()
     if (m_pipeline->isRunning())
         return true;
 
+    injectRules();
     if (!m_pipeline->start())
     {
         qWarning() << "CameraManager: 打开视频源失败";
@@ -249,6 +253,59 @@ std::vector<visionlab::PluginMetadata> CameraManager::pluginMetadata() const
 std::vector<std::string> CameraManager::pluginLoadErrors() const
 {
     return m_plugins.errors();
+}
+
+std::vector<visionlab::RuleSpec> CameraManager::ruleSpecs() const
+{
+    return m_ruleSpecs;
+}
+
+bool CameraManager::applyRuleSpecs(std::vector<visionlab::RuleSpec> specs)
+{
+    if (m_pipeline && m_pipeline->isRunning())
+        return false;
+
+    std::vector<std::unique_ptr<visionlab::IRule>> built;
+    built.reserve(specs.size());
+    for (const visionlab::RuleSpec& spec : specs)
+    {
+        auto rule = visionlab::makeRule(spec);
+        if (!rule)
+            return false;
+        built.push_back(std::move(rule));
+    }
+
+    m_ruleSpecs = std::move(specs);
+    if (visionlab::RuleEngine* engine = m_pipeline ? m_pipeline->ruleEngine() : nullptr)
+    {
+        engine->clear();
+        for (std::size_t i = 0; i < built.size(); ++i)
+        {
+            const bool enabled = m_ruleSpecs[i].enabled;
+            const std::string id = m_ruleSpecs[i].ruleId;
+            engine->addRule(std::move(built[i]));
+            engine->setEnabled(id, enabled);
+        }
+    }
+    return true;
+}
+
+void CameraManager::injectRules()
+{
+    visionlab::RuleEngine* engine = m_pipeline ? m_pipeline->ruleEngine() : nullptr;
+    if (!engine)
+        return;
+    engine->clear();
+    for (const visionlab::RuleSpec& spec : m_ruleSpecs)
+    {
+        auto rule = visionlab::makeRule(spec);
+        if (!rule)
+            continue;
+        const bool enabled = spec.enabled;
+        const std::string id = spec.ruleId;
+        engine->addRule(std::move(rule));
+        engine->setEnabled(id, enabled);
+    }
 }
 
 void CameraManager::notifyFrame()

@@ -89,6 +89,11 @@ std::vector<VisionEvent> VisionPipeline::recentEvents() const
     return m_eventLog.snapshot();
 }
 
+RuleEngine* VisionPipeline::ruleEngine()
+{
+    return m_rules.get();
+}
+
 void VisionPipeline::setPresentedCallback(std::function<void()> callback)
 {
     m_onPresented = std::move(callback);

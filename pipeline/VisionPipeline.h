@@ -55,6 +55,7 @@ public:
     std::optional<PresentedFrame> latest() const;
     PipelineStats stats() const;
     std::vector<VisionEvent> recentEvents() const;
+    RuleEngine* ruleEngine();
 
     // 仅在 !isRunning() 时有效。取出视频源供宿主按新会话设置重建管线。
     std::unique_ptr<IVideoSource> releaseSource();

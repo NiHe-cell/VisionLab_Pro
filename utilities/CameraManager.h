@@ -9,6 +9,7 @@
 #include <QMutex>
 #include <QObject>
 
+#include "analytics/RuleSpec.h"
 #include "core/PipelineStats.h"
 #include "core/VisionTypes.h"
 #include "pipeline/VisionPipeline.h"
@@ -51,6 +52,10 @@ public:
     std::vector<visionlab::PluginMetadata> pluginMetadata() const;
     std::vector<std::string> pluginLoadErrors() const;
 
+    std::vector<visionlab::RuleSpec> ruleSpecs() const;
+    // running 时返回 false 且不改引擎。整批 makeRule 成功才 clear + 注入。
+    bool applyRuleSpecs(std::vector<visionlab::RuleSpec> specs);
+
     QImage frame() const;
     visionlab::PipelineStats statsSnapshot() const;
 
@@ -64,9 +69,11 @@ private slots:
 private:
     void assembleFromPlugins(std::unique_ptr<visionlab::IVideoSource> source);
     void bindPresentedCallback();
+    void injectRules();
 
     visionlab::PluginManager m_plugins;
     visionlab::SessionSettings m_session;
+    std::vector<visionlab::RuleSpec> m_ruleSpecs;
     std::unique_ptr<visionlab::VisionPipeline> m_pipeline;
     mutable QMutex m_frameMutex;
     QImage m_frame;

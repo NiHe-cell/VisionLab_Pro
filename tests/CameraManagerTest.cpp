@@ -10,6 +10,8 @@
 #include "core/VisionTypes.h"
 #include "fakes/FakeDetector.h"
 #include "fakes/FakeVideoSource.h"
+#include "analytics/RuleEngine.h"
+#include "analytics/RuleSpec.h"
 #include "pipeline/VisionPipeline.h"
 #include "tracking/ByteTrackTracker.h"
 #include "utilities/CameraManager.h"
@@ -18,6 +20,9 @@
 using visionlab::ByteTrackTracker;
 using visionlab::DetectionMode;
 using visionlab::IDetector;
+using visionlab::RuleEngine;
+using visionlab::RuleKind;
+using visionlab::RuleSpec;
 using visionlab::SessionSettings;
 using visionlab::VisionPipeline;
 
@@ -34,7 +39,17 @@ std::unique_ptr<VisionPipeline> makePipeline(std::unique_ptr<FakeVideoSource> so
 {
     return std::make_unique<VisionPipeline>(
         std::move(source), makeFaceDetector(), VisionPipeline::kDefaultQueueCapacity,
-        std::make_unique<ByteTrackTracker>());
+        std::make_unique<ByteTrackTracker>(),
+        std::make_unique<RuleEngine>());
+}
+
+RuleSpec validRoiSpec(const std::string& id = "roi-test")
+{
+    RuleSpec spec;
+    spec.ruleId = id;
+    spec.kind = RuleKind::RoiIntrusion;
+    spec.polygon = {{0.0F, 0.0F}, {10.0F, 0.0F}, {10.0F, 10.0F}, {0.0F, 10.0F}};
+    return spec;
 }
 
 bool copyNativePlugin(const QDir& src, const QDir& dst, const QString& stem)
@@ -77,6 +92,10 @@ private slots:
     void productionPluginsRepeatStartStop();
     void applyRejectedWhileRunningKeepsMode();
     void trackingDisabledRebuildPublishesFramesWithoutTracks();
+    void applyRuleSpecsRejectedWhileRunning();
+    void applyRuleSpecsThenStartReportsEnabledRules();
+    void applyRuleSpecsBatchFailureKeepsPrevious();
+    void startStopStartKeepsAppliedRules();
 };
 
 void CameraManagerTest::cleanup()
@@ -219,6 +238,59 @@ void CameraManagerTest::trackingDisabledRebuildPublishesFramesWithoutTracks()
     QVERIFY(!manager.frame().isNull());
     QTRY_VERIFY_WITH_TIMEOUT(manager.statsSnapshot().processedFrames > 0, 2000);
     QCOMPARE(manager.statsSnapshot().activeTracks, std::size_t{0});
+    QVERIFY(manager.stop());
+}
+
+void CameraManagerTest::applyRuleSpecsRejectedWhileRunning()
+{
+    auto source = std::make_unique<FakeVideoSource>(32, "fake:rules-running", true, true);
+    CameraManager manager(makePipeline(std::move(source)));
+    QVERIFY(manager.start());
+    QVERIFY(!manager.applyRuleSpecs({validRoiSpec()}));
+    QVERIFY(manager.ruleSpecs().empty());
+    QVERIFY(manager.stop());
+}
+
+void CameraManagerTest::applyRuleSpecsThenStartReportsEnabledRules()
+{
+    auto source = std::make_unique<FakeVideoSource>(64, "fake:rules-on", true, true);
+    CameraManager manager(makePipeline(std::move(source)));
+    QVERIFY(manager.applyRuleSpecs({validRoiSpec()}));
+    QCOMPARE(manager.ruleSpecs().size(), std::size_t{1});
+
+    QVERIFY(manager.start());
+    QTRY_VERIFY_WITH_TIMEOUT(manager.statsSnapshot().enabledRules == 1, 2000);
+    QVERIFY(manager.stop());
+}
+
+void CameraManagerTest::applyRuleSpecsBatchFailureKeepsPrevious()
+{
+    auto source = std::make_unique<FakeVideoSource>(32, "fake:rules-batch", true, true);
+    CameraManager manager(makePipeline(std::move(source)));
+    QVERIFY(manager.applyRuleSpecs({validRoiSpec("roi-keep")}));
+
+    RuleSpec bad;
+    bad.ruleId = "roi-bad";
+    bad.kind = RuleKind::RoiIntrusion;
+    QVERIFY(!manager.applyRuleSpecs({validRoiSpec("roi-keep"), bad}));
+    QCOMPARE(manager.ruleSpecs().size(), std::size_t{1});
+    QCOMPARE(manager.ruleSpecs().front().ruleId, std::string("roi-keep"));
+
+    QVERIFY(manager.start());
+    QTRY_VERIFY_WITH_TIMEOUT(manager.statsSnapshot().enabledRules == 1, 2000);
+    QVERIFY(manager.stop());
+}
+
+void CameraManagerTest::startStopStartKeepsAppliedRules()
+{
+    auto source = std::make_unique<FakeVideoSource>(64, "fake:rules-restart", true, true);
+    CameraManager manager(makePipeline(std::move(source)));
+    QVERIFY(manager.applyRuleSpecs({validRoiSpec()}));
+    QVERIFY(manager.start());
+    QTRY_VERIFY_WITH_TIMEOUT(manager.statsSnapshot().enabledRules == 1, 2000);
+    QVERIFY(manager.stop());
+    QVERIFY(manager.start());
+    QTRY_VERIFY_WITH_TIMEOUT(manager.statsSnapshot().enabledRules == 1, 2000);
     QVERIFY(manager.stop());
 }
 

@@ -175,8 +175,11 @@ other rules still run.
 ## Production wiring
 
 `CameraManager::assembleFromPlugins` injects an **empty** `RuleEngine`
-(no default ROI or line). There is no `VISIONLAB_RULES` environment
-switch and no QML enable property (Phase 8).
+(no default ROI or line). Production may later inject specs via
+`CameraManager::applyRuleSpecs` **only while stopped** (`clear` +
+`makeRule` + `addRule` + `setEnabled`). `start()` and T06 rebuilds
+re-apply the stored `vector<RuleSpec>`. There is still no default ROI
+and no `VISIONLAB_RULES` environment switch.
 
 `InferenceWorker` evaluates rules after `ITracker::update` and before
 render, on the inference thread only. `evaluate` is wrapped in
