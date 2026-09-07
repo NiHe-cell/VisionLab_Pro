@@ -2,7 +2,7 @@
 
 These binaries print metric **field names**. Values change with CPU, Debug vs
 Release, and load. This file does not contain measured FPS or latency tables
-(see `docs/performance.md` when that template exists). Do not copy the
+(see `docs/performance.md`). Do not copy the
 Performance page 250 ms snapshot here.
 
 ## Inference — `bench_onnx_cpu`
