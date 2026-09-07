@@ -50,6 +50,7 @@ private slots:
     void createFailureReturnsNull();
     void unknownIdReturnsNull();
     void detectorsWorkUntilDestroyed();
+    void rescanEmptyDirectoryKeepsLiveDetectors();
 };
 
 void PluginManagerTest::missingDirectoryIsEmptySuccess()
@@ -174,6 +175,27 @@ void PluginManagerTest::detectorsWorkUntilDestroyed()
     first.reset();
     QVERIFY(second->isReady());
     second.reset();
+}
+
+void PluginManagerTest::rescanEmptyDirectoryKeepsLiveDetectors()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    QVERIFY(copyPlugin(dummyPluginPath(),
+                       dir.filePath(QFileInfo(dummyPluginPath()).fileName())));
+
+    PluginManager manager;
+    manager.scan(dir.path().toStdString());
+    auto detector = manager.createDetector("vision.dummy", DetectorCreateRequest{});
+    QVERIFY(detector);
+    QVERIFY(detector->isReady());
+
+    QTemporaryDir empty;
+    QVERIFY(empty.isValid());
+    manager.scan(empty.path().toStdString());
+    QVERIFY(manager.metadata().empty());
+    QVERIFY(detector->isReady());
+    QCOMPARE(detector->name(), std::string("Dummy"));
 }
 
 QTEST_GUILESS_MAIN(PluginManagerTest)

@@ -4,6 +4,7 @@
 #include <cctype>
 #include <utility>
 
+#include <QLibrary>
 #include <QPluginLoader>
 #include <QString>
 
@@ -40,34 +41,50 @@ std::string pathText(const std::filesystem::path& path)
 
 struct PluginManager::Impl
 {
-    struct Loaded
+    struct Resident
     {
         std::unique_ptr<QPluginLoader> loader;
         IVisionPlugin* plugin = nullptr;
         PluginMetadata meta;
+        std::filesystem::path path;
     };
 
-    std::vector<Loaded> loaded;
+    // Residents are never erased: scan() must not unload while IDetector
+    // instances from a previous catalog still exist (CameraManager backup).
+    std::vector<std::unique_ptr<Resident>> residents;
+    std::vector<Resident*> catalog;
     std::vector<std::string> errors;
 
-    Loaded* find(const std::string& id)
+    Resident* findResident(const std::filesystem::path& path)
     {
-        for (auto& entry : loaded)
+        std::error_code ec;
+        for (auto& resident : residents)
         {
-            if (entry.meta.id == id)
-                return &entry;
+            if (std::filesystem::equivalent(resident->path, path, ec) && !ec)
+                return resident.get();
+            ec.clear();
         }
         return nullptr;
     }
 
-    bool hasId(const std::string& id) const
+    bool catalogHasId(const std::string& id) const
     {
-        for (const auto& entry : loaded)
+        for (const Resident* resident : catalog)
         {
-            if (entry.meta.id == id)
+            if (resident->meta.id == id)
                 return true;
         }
         return false;
+    }
+
+    Resident* catalogFind(const std::string& id)
+    {
+        for (Resident* resident : catalog)
+        {
+            if (resident->meta.id == id)
+                return resident;
+        }
+        return nullptr;
     }
 };
 
@@ -80,7 +97,7 @@ PluginManager::~PluginManager() = default;
 
 void PluginManager::scan(const std::filesystem::path& directory)
 {
-    m_impl->loaded.clear();
+    m_impl->catalog.clear();
     m_impl->errors.clear();
 
     std::error_code ec;
@@ -98,7 +115,19 @@ void PluginManager::scan(const std::filesystem::path& directory)
         if (!isNativeLibrary(path))
             continue;
 
+        if (Impl::Resident* existing = m_impl->findResident(path))
+        {
+            if (m_impl->catalogHasId(existing->meta.id))
+            {
+                m_impl->errors.push_back("duplicate id '" + existing->meta.id + "': " + pathText(path));
+                continue;
+            }
+            m_impl->catalog.push_back(existing);
+            continue;
+        }
+
         auto loader = std::make_unique<QPluginLoader>(toQtPath(path));
+        loader->setLoadHints(QLibrary::PreventUnloadHint);
         if (!loader->load())
         {
             m_impl->errors.push_back(pathText(path) + ": " + loader->errorString().toStdString());
@@ -124,26 +153,28 @@ void PluginManager::scan(const std::filesystem::path& directory)
             m_impl->errors.push_back(pathText(path) + ": empty id");
             continue;
         }
-        if (m_impl->hasId(meta.id))
+        if (m_impl->catalogHasId(meta.id))
         {
             m_impl->errors.push_back("duplicate id '" + meta.id + "': " + pathText(path));
             continue;
         }
 
-        Impl::Loaded loaded;
-        loaded.plugin = plugin;
-        loaded.meta = std::move(meta);
-        loaded.loader = std::move(loader);
-        m_impl->loaded.push_back(std::move(loaded));
+        auto resident = std::make_unique<Impl::Resident>();
+        resident->plugin = plugin;
+        resident->meta = std::move(meta);
+        resident->path = path;
+        resident->loader = std::move(loader);
+        m_impl->catalog.push_back(resident.get());
+        m_impl->residents.push_back(std::move(resident));
     }
 }
 
 std::vector<PluginMetadata> PluginManager::metadata() const
 {
     std::vector<PluginMetadata> result;
-    result.reserve(m_impl->loaded.size());
-    for (const auto& entry : m_impl->loaded)
-        result.push_back(entry.meta);
+    result.reserve(m_impl->catalog.size());
+    for (const Impl::Resident* resident : m_impl->catalog)
+        result.push_back(resident->meta);
     return result;
 }
 
@@ -155,7 +186,7 @@ std::vector<std::string> PluginManager::errors() const
 std::unique_ptr<IDetector> PluginManager::createDetector(const std::string& pluginId,
                                                          const DetectorCreateRequest& request)
 {
-    Impl::Loaded* entry = m_impl->find(pluginId);
+    Impl::Resident* entry = m_impl->catalogFind(pluginId);
     if (!entry)
     {
         m_impl->errors.push_back("unknown plugin id '" + pluginId + "'");

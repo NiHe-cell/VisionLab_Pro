@@ -1,6 +1,7 @@
 #include <QtTest/QtTest>
 
 #include <QDir>
+#include <QFile>
 #include <QFileInfo>
 #include <QPluginLoader>
 #include <QTemporaryDir>
@@ -32,6 +33,7 @@ private slots:
     void metadataIsFace();
     void missingModelsIsNotReady();
     void repoModelsAreReady();
+    void rescanEmptyDirectoryKeepsLiveDetector();
 };
 
 void FacePluginTest::metadataIsFace()
@@ -77,6 +79,30 @@ void FacePluginTest::repoModelsAreReady()
     const auto detector = manager.createDetector("vision.face", request);
     QVERIFY(detector);
     QVERIFY2(detector->isReady(), "Face plugin must load deploy.prototxt + caffemodel from models/");
+}
+
+void FacePluginTest::rescanEmptyDirectoryKeepsLiveDetector()
+{
+    QTemporaryDir plugDir;
+    QVERIFY(plugDir.isValid());
+    const QString src = QString::fromUtf8(VISIONLAB_FACE_PLUGIN);
+    QVERIFY(QFile::copy(src, plugDir.filePath(QFileInfo(src).fileName())));
+
+    PluginManager manager;
+    manager.scan(plugDir.path().toStdString());
+
+    DetectorCreateRequest request;
+    request.modelDir = QString::fromUtf8(VISIONLAB_MODELS_DIR).toStdString();
+    const auto detector = manager.createDetector("vision.face", request);
+    QVERIFY(detector);
+    QVERIFY(detector->isReady());
+
+    QTemporaryDir empty;
+    QVERIFY(empty.isValid());
+    manager.scan(empty.path().toStdString());
+    QVERIFY(manager.metadata().empty());
+    QVERIFY(detector->isReady());
+    (void)detector->detect(makePacket());
 }
 
 QTEST_GUILESS_MAIN(FacePluginTest)

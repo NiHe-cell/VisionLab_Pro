@@ -14,7 +14,8 @@ namespace visionlab {
 
 // 扫描插件目录、校验 IID/版本/重复 id、创建 IDetector。
 // 非 QObject、非线程安全：只在 GUI 线程、管线 start() 之前调用。
-// V1 不提供 unload()；QPluginLoader 活到本对象析构。
+// V1 不提供 unload()；QPluginLoader 活到本对象析构。scan() 只替换当前扫描结果，
+// 不销毁已加载的 loader，避免 CameraManager 重建管线时卸掉仍被 backup 持有的 IDetector。
 class PluginManager
 {
 public:

@@ -63,6 +63,9 @@ YOLO plugins must not `new` an ORT session or TensorRT engine directly.
   `PluginManager`. `CameraManager` declares `PluginManager m_plugins`
   **before** `m_pipeline` so destructors run in that order. V1 does
   not unload plugins while detectors exist.
+- `scan` rebuilds the current catalog only. It must **not** destroy
+  `QPluginLoader`s from earlier scans while `IDetector` instances may still
+  exist (`CameraManager::applySessionSettings` keeps a backup pipeline).
 - `scan` / `createDetector` are not thread-safe. Call them on the GUI
   thread before `VisionPipeline::start()`. Do not scan while inference
   is running.
