@@ -77,6 +77,34 @@ ctest --test-dir build/dev-debug -L cpu --output-on-failure
 See `docs/testing.md` for labels and `QSKIP` policy. Missing
 `yolov4-tiny.onnx` should skip ORT model slots, not invent timings.
 
+## GitHub Actions (CPU only)
+
+Workflow: `.github/workflows/ci.yml` on `windows-2022`.
+
+It is **not** a copy of a developer machine. Differences:
+
+- Generator is the `dev-debug` Ninja preset (`VISIONLAB_ENABLE_TENSORRT=OFF`).
+- Qt is **6.8.3** `win64_msvc2022_64` via `jurplel/install-qt-action` (Sql is
+  in `qtbase`; Quick/Qml in `qtdeclarative`; `qtshadertools` is a module).
+  Local kits may be a newer Qt 6.8+ install.
+- OpenCV is the official Windows pack `opencv-4.10.0-windows.exe` (7z SFX).
+  `OpenCV_DIR` is the directory that contains `OpenCVConfig.cmake`, typically
+  `opencv/build/x64/vc16/lib` (vc17 is accepted if that is what the pack
+  ships). Cached under `.ci-deps`.
+- ONNX Runtime is the official CPU zip `onnxruntime-win-x64-1.17.3.zip`.
+  `OnnxRuntime_DIR` is the extracted root (`include/` + `lib/`).
+- No CUDA toolkit, no TensorRT, no GPU runner.
+- `yolov4-tiny.onnx` is **not** downloaded. ORT tests that need it `QSKIP`.
+  Tracked Caffe files under `models/` are present, so `faceplugin` should run.
+- Optional smoke: `bench_pipeline --seconds 2`. A crash fails the job; the
+  step does **not** assert `dropped`.
+
+Cache key includes those OpenCV and ORT versions. If a download URL 404s,
+the job fails with a maintainer-update message; it does not skip the job.
+
+A green badge on GitHub means a recorded Actions run passed. This file does
+not claim the workflow is green until that run exists.
+
 ## Sanitizers (not default)
 
 Do not turn AddressSanitizer / UndefinedBehaviorSanitizer on in the MSVC + Qt

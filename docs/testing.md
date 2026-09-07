@@ -100,5 +100,9 @@ ctest --test-dir build/dev-debug -L cpu --output-on-failure
 With TensorRT enabled, `ctest -N -L gpu` lists the three GPU tests. With
 `VISIONLAB_ENABLE_TENSORRT=OFF` that label set is empty.
 
+GitHub Actions runs the same `ctest -L cpu` on `windows-2022` without CUDA
+(`.github/workflows/ci.yml`, `docs/build.md`). Missing `yolov4-tiny.onnx`
+must `QSKIP`, not fail the job.
+
 Do not copy Performance-page snapshots or bench stdout into this file as
 guaranteed throughput.

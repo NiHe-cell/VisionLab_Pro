@@ -1,0 +1,154 @@
+# VisionLab Pro — Windows CPU CI (no CUDA job).
+#
+# Pinned dependency filenames (check GitHub releases before bumping):
+#   Qt: 6.8.3  arch win64_msvc2022_64
+#   OpenCV pack: opencv-4.10.0-windows.exe
+#     https://github.com/opencv/opencv/releases/download/4.10.0/opencv-4.10.0-windows.exe
+#     SHA256 (release page): bff38466091c313dac21a0b73eea8278316a89c1d434c6f0b10697e087670168
+#   ONNX Runtime CPU zip: onnxruntime-win-x64-1.17.3.zip
+#     https://github.com/microsoft/onnxruntime/releases/download/v1.17.3/onnxruntime-win-x64-1.17.3.zip
+#
+# yolov4-tiny.onnx is not downloaded. Missing-model ORT slots must QSKIP.
+# Face Caffe files are tracked in models/; faceplugin should run, not skip.
+# Do not continue-on-error on configure/build.
+
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  windows-cpu:
+    name: Windows CPU configure-build-ctest
+    runs-on: windows-2022
+    timeout-minutes: 90
+    env:
+      VISIONLAB_ENABLE_TENSORRT: "OFF"
+      OPENCV_URL: https://github.com/opencv/opencv/releases/download/4.10.0/opencv-4.10.0-windows.exe
+      OPENCV_FILE: opencv-4.10.0-windows.exe
+      OPENCV_SHA256: BFF38466091C313DAC21A0B73EEA8278316A89C1D434C6F0B10697E087670168
+      ORT_URL: https://github.com/microsoft/onnxruntime/releases/download/v1.17.3/onnxruntime-win-x64-1.17.3.zip
+      ORT_FILE: onnxruntime-win-x64-1.17.3.zip
+      DEPS_DIR: ${{ github.workspace }}/.ci-deps
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Cache OpenCV pack and ONNX Runtime CPU
+        id: cache-deps
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.DEPS_DIR }}
+          key: deps-opencv-4.10.0-ort-1.17.3-win-x64-v1
+
+      - name: Download and extract OpenCV and ONNX Runtime
+        if: steps.cache-deps.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force -Path $env:DEPS_DIR | Out-Null
+
+          if (-not (Get-Command 7z -ErrorAction SilentlyContinue)) {
+            choco install 7zip -y --no-progress
+          }
+
+          $opencvExe = Join-Path $env:DEPS_DIR $env:OPENCV_FILE
+          Write-Host "Downloading $env:OPENCV_FILE"
+          & curl.exe -L --retry 5 --retry-delay 10 --fail -o $opencvExe $env:OPENCV_URL
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "OpenCV download failed. Maintainer must update the mirror URL: $env:OPENCV_URL"
+            exit 1
+          }
+          $hash = (Get-FileHash -Algorithm SHA256 $opencvExe).Hash.ToUpperInvariant()
+          if ($hash -ne $env:OPENCV_SHA256) {
+            Write-Error "OpenCV SHA256 mismatch (got $hash). Maintainer must update the pin."
+            exit 1
+          }
+          & 7z x $opencvExe "-o$env:DEPS_DIR" -y
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "OpenCV extract failed. Maintainer must update the pack layout."
+            exit 1
+          }
+          Remove-Item $opencvExe -Force
+
+          $ortZip = Join-Path $env:DEPS_DIR $env:ORT_FILE
+          Write-Host "Downloading $env:ORT_FILE"
+          & curl.exe -L --retry 5 --retry-delay 10 --fail -o $ortZip $env:ORT_URL
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "ONNX Runtime download failed. Maintainer must update the mirror URL: $env:ORT_URL"
+            exit 1
+          }
+          Expand-Archive -LiteralPath $ortZip -DestinationPath $env:DEPS_DIR -Force
+          Remove-Item $ortZip -Force
+
+      - name: Resolve OpenCV_DIR and OnnxRuntime_DIR
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $known = @(
+            (Join-Path $env:DEPS_DIR 'opencv\build\x64\vc16\lib'),
+            (Join-Path $env:DEPS_DIR 'opencv\build\x64\vc17\lib'),
+            (Join-Path $env:DEPS_DIR 'opencv\opencv\build\x64\vc16\lib'),
+            (Join-Path $env:DEPS_DIR 'opencv\opencv\build\x64\vc17\lib')
+          )
+          $opencvDir = $known | Where-Object { Test-Path (Join-Path $_ 'OpenCVConfig.cmake') } | Select-Object -First 1
+          if (-not $opencvDir) {
+            Write-Error "OpenCVConfig.cmake not found under $env:DEPS_DIR. Maintainer must update the pack layout."
+            exit 1
+          }
+
+          $ortRoot = Join-Path $env:DEPS_DIR 'onnxruntime-win-x64-1.17.3'
+          $ortHeader = Join-Path $ortRoot 'include\onnxruntime_cxx_api.h'
+          if (-not (Test-Path $ortHeader)) {
+            Write-Error "ONNX Runtime header missing at $ortHeader. Maintainer must update the zip layout."
+            exit 1
+          }
+
+          "OPENCV_CMAKE_DIR=$opencvDir" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "ORT_ROOT=$ortRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          Write-Host "OpenCV_DIR=$opencvDir"
+          Write-Host "OnnxRuntime_DIR=$ortRoot"
+
+      - name: Install Qt 6.8.3 MSVC 2022 64-bit
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.3'
+          host: windows
+          target: desktop
+          arch: win64_msvc2022_64
+          cache: 'true'
+          archives: qtbase qtdeclarative
+          modules: qtshadertools
+
+      - name: Enable MSVC developer command prompt
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Install Ninja
+        run: choco install ninja -y --no-progress
+
+      - name: Configure (dev-debug preset, TensorRT OFF)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          cmake --preset dev-debug `
+            "-DOpenCV_DIR=$env:OPENCV_CMAKE_DIR" `
+            "-DOnnxRuntime_DIR=$env:ORT_ROOT" `
+            "-DVISIONLAB_ENABLE_TENSORRT=OFF"
+
+      - name: Build
+        run: cmake --build --preset dev-debug
+
+      - name: ctest -L cpu
+        run: ctest --test-dir build/dev-debug -L cpu --output-on-failure -C Debug
+
+      - name: bench_pipeline smoke (2 seconds)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $opencvBin = Join-Path (Split-Path $env:OPENCV_CMAKE_DIR -Parent) 'bin'
+          $exeDir = Join-Path $pwd 'build\dev-debug'
+          $env:PATH = "$exeDir;$opencvBin;$env:PATH"
+          & (Join-Path $exeDir 'bench_pipeline.exe') --seconds 2
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
