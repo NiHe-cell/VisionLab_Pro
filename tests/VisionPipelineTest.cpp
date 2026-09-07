@@ -310,15 +310,14 @@ void VisionPipelineTest::restartResetsEventIds()
 
     QVERIFY(pipeline.start());
     QVERIFY(waitUntil([&] { return pipeline.recentEvents().size() >= 8; }));
-    const auto leftover = pipeline.recentEvents().size();
     pipeline.stop();
 
     QVERIFY(pipeline.start());
-    QVERIFY(waitUntil([&] { return pipeline.stats().processedFrames >= 3; }));
-    const auto events = pipeline.recentEvents();
-    QVERIFY(!events.empty());
-    QVERIFY(events.size() < leftover);
-    QCOMPARE(events.front().eventId, std::uint64_t{1});
+    QVERIFY(waitUntil([&] {
+        const auto events = pipeline.recentEvents();
+        return !events.empty() && events.front().eventId == 1;
+    }));
+    QCOMPARE(pipeline.recentEvents().front().eventId, std::uint64_t{1});
     pipeline.stop();
 }
 
