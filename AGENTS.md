@@ -118,3 +118,25 @@ Before implementing a non-trivial task:
 
 Do not perform large repository-wide rewrites unless explicitly requested.
 
+
+
+\## Task Completion Report
+
+
+
+After every completed implementation task, append the result to the sole
+
+living report on the user's Desktop:
+
+
+
+`%USERPROFILE%\Desktop\VisionLab_Pro任务总结报告.docx`
+
+
+
+Do not create a new .docx, a backup copy, or a separate markdown summary.
+
+Use the helpers in tools/task_summary_report.py and follow
+
+.cursor/rules/task-summary-report.mdc.
+
