@@ -172,6 +172,8 @@ Commands and stdout keys: [`docs/benchmarks.md`](docs/benchmarks.md).
 
 **V1.0** is the architecture through Phase 9: CPU pipeline, plugins, ByteTrack,
 rules, four-page UI, SQLite, CPU CTest label, benches, docs, attribution.
+Checklist: [`docs/release-checklist.md`](docs/release-checklist.md). Review:
+[`docs/architecture-review.md`](docs/architecture-review.md).
 
 **Future (not V1):** INT8, qmltestrunner, plugin unload / hot-reload, rule
 mutate while running, larger EventLog, default sanitizers, refreshed
