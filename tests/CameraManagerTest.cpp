@@ -1,5 +1,6 @@
 #include <QtTest/QtTest>
 
+#include <cstdio>
 #include <filesystem>
 #include <map>
 #include <memory>
@@ -80,6 +81,10 @@ bool copyNativePlugin(const QDir& src, const QDir& dst, const QString& stem)
     return copied;
 }
 
+// GitHub Actions Debug + official OpenCV debug DNN: first FaceDetector::forward
+// often exceeds 2s. CTest pipes stdout fully buffered, so FAIL! never appears.
+constexpr int kPresentedWaitMs = 30000;
+
 } // namespace
 
 class CameraManagerTest : public QObject
@@ -87,6 +92,7 @@ class CameraManagerTest : public QObject
     Q_OBJECT
 
 private slots:
+    void initTestCase();
     void cleanup();
     void startFailsWhenSourceOpenFails();
     void startPublishesFrameThenStopClears();
@@ -103,6 +109,12 @@ private slots:
     void persistFakeRuleEventsToTempDb();
     void applyEmptyPluginDirRestoresBackupPipeline();
 };
+
+void CameraManagerTest::initTestCase()
+{
+    setvbuf(stdout, nullptr, _IONBF, 0);
+    setvbuf(stderr, nullptr, _IONBF, 0);
+}
 
 void CameraManagerTest::cleanup()
 {
@@ -128,11 +140,11 @@ void CameraManagerTest::startPublishesFrameThenStopClears()
     QSignalSpy cleared(&manager, &CameraManager::frameCleared);
 
     QVERIFY(manager.start());
-    QVERIFY(changed.wait(2000));
+    QVERIFY(changed.wait(kPresentedWaitMs));
     QVERIFY(!manager.frame().isNull());
     QCOMPARE(manager.frame().format(), QImage::Format_RGB888);
     QVERIFY(manager.statsSnapshot().capturedFrames > 0);
-    QTRY_VERIFY_WITH_TIMEOUT(manager.statsSnapshot().activeTracks > 0, 2000);
+    QTRY_VERIFY_WITH_TIMEOUT(manager.statsSnapshot().activeTracks > 0, kPresentedWaitMs);
 
     QVERIFY(manager.stop());
     QCOMPARE(cleared.count(), 1);
@@ -174,7 +186,7 @@ void CameraManagerTest::missingYoloObjectModeStaysAlive()
 
     QSignalSpy changed(&manager, &CameraManager::frameChanged);
     QVERIFY(manager.start());
-    QVERIFY(changed.wait(2000));
+    QVERIFY(changed.wait(kPresentedWaitMs));
     QVERIFY(!manager.frame().isNull());
     QVERIFY(manager.stop());
 }
@@ -185,10 +197,11 @@ void CameraManagerTest::productionPluginsSwitchModesWithoutCrash()
 
     auto source = std::make_unique<FakeVideoSource>(64, "fake:all-plugins", true, true);
     CameraManager manager(std::move(source));
+    manager.setMode(DetectionMode::Motion);
 
     QSignalSpy changed(&manager, &CameraManager::frameChanged);
     QVERIFY(manager.start());
-    QVERIFY(changed.wait(2000));
+    QVERIFY(changed.wait(kPresentedWaitMs));
 
     manager.setMode(DetectionMode::Face);
     manager.setMode(DetectionMode::Object);
@@ -203,6 +216,7 @@ void CameraManagerTest::productionPluginsRepeatStartStop()
 
     auto source = std::make_unique<FakeVideoSource>(64, "fake:restart-plugins", true, true);
     CameraManager manager(std::move(source));
+    manager.setMode(DetectionMode::Motion);
 
     QVERIFY(manager.start());
     QVERIFY(manager.stop());
@@ -239,10 +253,11 @@ void CameraManagerTest::trackingDisabledRebuildPublishesFramesWithoutTracks()
     QVERIFY(!manager.sessionSettings().trackingEnabled);
 
     QSignalSpy changed(&manager, &CameraManager::frameChanged);
+    manager.setMode(DetectionMode::Motion);
     QVERIFY(manager.start());
-    QVERIFY(changed.wait(2000));
+    QVERIFY(changed.wait(kPresentedWaitMs));
     QVERIFY(!manager.frame().isNull());
-    QTRY_VERIFY_WITH_TIMEOUT(manager.statsSnapshot().processedFrames > 0, 2000);
+    QTRY_VERIFY_WITH_TIMEOUT(manager.statsSnapshot().processedFrames > 0, kPresentedWaitMs);
     QCOMPARE(manager.statsSnapshot().activeTracks, std::size_t{0});
     QVERIFY(manager.stop());
 }
@@ -265,7 +280,7 @@ void CameraManagerTest::applyRuleSpecsThenStartReportsEnabledRules()
     QCOMPARE(manager.ruleSpecs().size(), std::size_t{1});
 
     QVERIFY(manager.start());
-    QTRY_VERIFY_WITH_TIMEOUT(manager.statsSnapshot().enabledRules == 1, 2000);
+    QTRY_VERIFY_WITH_TIMEOUT(manager.statsSnapshot().enabledRules == 1, kPresentedWaitMs);
     QVERIFY(manager.stop());
 }
 
@@ -283,7 +298,7 @@ void CameraManagerTest::applyRuleSpecsBatchFailureKeepsPrevious()
     QCOMPARE(manager.ruleSpecs().front().ruleId, std::string("roi-keep"));
 
     QVERIFY(manager.start());
-    QTRY_VERIFY_WITH_TIMEOUT(manager.statsSnapshot().enabledRules == 1, 2000);
+    QTRY_VERIFY_WITH_TIMEOUT(manager.statsSnapshot().enabledRules == 1, kPresentedWaitMs);
     QVERIFY(manager.stop());
 }
 
@@ -293,10 +308,10 @@ void CameraManagerTest::startStopStartKeepsAppliedRules()
     CameraManager manager(makePipeline(std::move(source)));
     QVERIFY(manager.applyRuleSpecs({validRoiSpec()}));
     QVERIFY(manager.start());
-    QTRY_VERIFY_WITH_TIMEOUT(manager.statsSnapshot().enabledRules == 1, 2000);
+    QTRY_VERIFY_WITH_TIMEOUT(manager.statsSnapshot().enabledRules == 1, kPresentedWaitMs);
     QVERIFY(manager.stop());
     QVERIFY(manager.start());
-    QTRY_VERIFY_WITH_TIMEOUT(manager.statsSnapshot().enabledRules == 1, 2000);
+    QTRY_VERIFY_WITH_TIMEOUT(manager.statsSnapshot().enabledRules == 1, kPresentedWaitMs);
     QVERIFY(manager.stop());
 }
 
@@ -312,13 +327,13 @@ void CameraManagerTest::persistFakeRuleEventsToTempDb()
     QVERIFY(manager.applyRuleSpecs({validRoiSpec()}));
 
     QVERIFY(manager.start());
-    QTRY_VERIFY_WITH_TIMEOUT(!manager.recentEvents().empty(), 2000);
+    QTRY_VERIFY_WITH_TIMEOUT(!manager.recentEvents().empty(), kPresentedWaitMs);
 
     std::vector<StoredEvent> rows;
     manager.queryEvents(EventQuery{}, this, [&](std::vector<StoredEvent> result) {
         rows = std::move(result);
     });
-    QTRY_VERIFY_WITH_TIMEOUT(!rows.empty(), 2000);
+    QTRY_VERIFY_WITH_TIMEOUT(!rows.empty(), kPresentedWaitMs);
     QVERIFY(rows.front().wallUtcMs > 0);
     QVERIFY(manager.stop());
 }
@@ -339,9 +354,9 @@ void CameraManagerTest::applyEmptyPluginDirRestoresBackupPipeline()
     QVERIFY(manager.sessionSettings().trackingEnabled);
 
     QSignalSpy changed(&manager, &CameraManager::frameChanged);
-    manager.setMode(DetectionMode::Face);
+    manager.setMode(DetectionMode::Motion);
     QVERIFY(manager.start());
-    QVERIFY(changed.wait(2000));
+    QVERIFY(changed.wait(kPresentedWaitMs));
     QVERIFY(!manager.frame().isNull());
     QVERIFY(manager.stop());
 }

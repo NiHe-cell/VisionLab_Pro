@@ -391,6 +391,7 @@ target_compile_definitions(tst_cameramanager PRIVATE
     VISIONLAB_BUILD_PLUGINS_DIR="${CMAKE_BINARY_DIR}/plugins")
 add_dependencies(tst_cameramanager vision_dummy vision_motion vision_face vision_yolo)
 add_test(NAME cameramanager COMMAND tst_cameramanager)
+set_tests_properties(cameramanager PROPERTIES TIMEOUT 180)
 visionlab_copy_ort_dlls(tst_cameramanager)
 
 add_executable(tst_localecontroller
