@@ -414,6 +414,28 @@ target_link_libraries(tst_onnxcpubench PRIVATE Qt6::Core Qt6::Test)
 target_include_directories(tst_onnxcpubench PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 add_test(NAME onnxcpubench COMMAND tst_onnxcpubench)
 
+file(GENERATE
+    OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/PipelineBenchmarkPaths.h"
+    CONTENT "#pragma once
+#define BENCH_PIPELINE R\"path($<TARGET_FILE:bench_pipeline>)path\"
+")
+add_executable(tst_pipelinebench PipelineBenchmarkTest.cpp)
+add_dependencies(tst_pipelinebench bench_pipeline)
+target_link_libraries(tst_pipelinebench PRIVATE Qt6::Core Qt6::Test)
+target_include_directories(tst_pipelinebench PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
+add_test(NAME pipelinebench COMMAND tst_pipelinebench)
+
+file(GENERATE
+    OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/TrackerBenchmarkPaths.h"
+    CONTENT "#pragma once
+#define BENCH_TRACKER R\"path($<TARGET_FILE:bench_tracker>)path\"
+")
+add_executable(tst_trackerbench TrackerBenchmarkTest.cpp)
+add_dependencies(tst_trackerbench bench_tracker)
+target_link_libraries(tst_trackerbench PRIVATE Qt6::Core Qt6::Test)
+target_include_directories(tst_trackerbench PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
+add_test(NAME trackerbench COMMAND tst_trackerbench)
+
 if(VISIONLAB_ENABLE_TENSORRT)
     add_executable(tst_tensorrtengine TensorRTEngineTest.cpp)
     target_link_libraries(tst_tensorrtengine PRIVATE
@@ -496,18 +518,24 @@ if(VISIONLAB_ENABLE_TENSORRT)
     endif()
 endif()
 
+set(visionlab_cpu_tests
+    smoke framepacket track visionevent modelconfig iinferenceengine onnxruntimeengine inferenceenginefactory onnxruntimecudaengine inferenceselection pluginmetadata idetector itracker irule rulegeometry roiintrusion linecrossing loitering counting ruleengine ioumatching kalmanboxfilter bytetracktracker detectionrenderer trackrenderer
+    yolodecoding yolopreprocess yolodetector ssddecoding motiondetector dummydetector dummyplugin motionplugin faceplugin yoloplugin pluginmanager ivideosource
+    letterbox rulespec eventrepository detectionmodel trackmodel eventmodel performancemodel pluginmodel rulemodel eventwriter visioncontroller
+    camerasource modemapping boundedqueue latestresult captureworker
+    inferenceworker latencywindow statsprobe eventlog visionpipeline
+    pipelineoverload pipelinelifecycle cameramanager localecontroller
+    onnxcpubench pipelinebench trackerbench)
+set_tests_properties(${visionlab_cpu_tests} PROPERTIES LABELS cpu)
+if(VISIONLAB_ENABLE_TENSORRT)
+    set_tests_properties(tensorrtengine tensorrtenginecache cudaraii PROPERTIES LABELS gpu)
+endif()
+
 if(WIN32)
     # 让测试可执行文件在 ctest 下能解析 Qt 与 OpenCV 的 DLL。
     # 预编译 OpenCV 标准目录布局：<root>/build/x64/<toolset>/{lib,bin}
     get_filename_component(VISIONLAB_OPENCV_BIN "${OpenCV_DIR}/../bin" ABSOLUTE)
-    set(visionlab_tests
-        smoke framepacket track visionevent modelconfig iinferenceengine onnxruntimeengine inferenceenginefactory onnxruntimecudaengine inferenceselection pluginmetadata idetector itracker irule rulegeometry roiintrusion linecrossing loitering counting ruleengine ioumatching kalmanboxfilter bytetracktracker detectionrenderer trackrenderer
-        yolodecoding yolopreprocess yolodetector ssddecoding motiondetector dummydetector dummyplugin motionplugin faceplugin yoloplugin pluginmanager ivideosource
-        letterbox rulespec eventrepository detectionmodel trackmodel eventmodel performancemodel pluginmodel rulemodel eventwriter visioncontroller
-        camerasource modemapping boundedqueue latestresult captureworker
-        inferenceworker latencywindow statsprobe eventlog visionpipeline
-        pipelineoverload pipelinelifecycle cameramanager localecontroller
-        onnxcpubench)
+    set(visionlab_tests ${visionlab_cpu_tests})
     if(VISIONLAB_ENABLE_TENSORRT)
         list(APPEND visionlab_tests cudaraii tensorrtengine tensorrtenginecache)
     endif()

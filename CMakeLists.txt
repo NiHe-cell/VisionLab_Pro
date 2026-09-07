@@ -10,6 +10,17 @@ if(MSVC)
     add_compile_options(/utf-8)
 endif()
 
+option(VISIONLAB_ENABLE_WARNINGS
+    "Enable extra compiler diagnostics (/W4 or -Wall -Wextra). Does not enable -Werror."
+    OFF)
+if(VISIONLAB_ENABLE_WARNINGS)
+    if(MSVC)
+        add_compile_options(/W4)
+    else()
+        add_compile_options(-Wall -Wextra)
+    endif()
+endif()
+
 # OpenCV 查找：通过以下任一方式提供 OpenCVConfig.cmake 所在目录：
 #   -DOpenCV_DIR=...            （推荐，会被缓存）
 #   OpenCV_DIR 环境变量，或 CMAKE_PREFIX_PATH 条目。
@@ -476,6 +487,15 @@ if(VISIONLAB_ENABLE_TENSORRT)
                 "$<TARGET_FILE_DIR:bench_onnx_cpu>")
     endif()
 endif()
+
+# 管线过载 / soak：假视频源，不打开摄像头、不跑 YOLO。不进 ctest 计时门槛。
+add_executable(bench_pipeline benchmarks/PipelineBenchmark.cpp)
+target_link_libraries(bench_pipeline PRIVATE visionlab_pipeline)
+target_include_directories(bench_pipeline PRIVATE ${CMAKE_SOURCE_DIR}/tests)
+
+# ByteTrack 合成框计时。不读图、不链 inference。
+add_executable(bench_tracker benchmarks/TrackerBenchmark.cpp)
+target_link_libraries(bench_tracker PRIVATE visionlab_tracking)
 
 include(CTest)
 if(BUILD_TESTING)

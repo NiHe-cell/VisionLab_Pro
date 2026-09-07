@@ -15,11 +15,15 @@ public:
     explicit FakeVideoSource(int frameCount,
                              std::string id = "fake:0",
                              bool openSucceeds = true,
-                             bool loop = false)
+                             bool loop = false,
+                             int width = 4,
+                             int height = 4)
         : m_frameCount(frameCount)
         , m_id(std::move(id))
         , m_openSucceeds(openSucceeds)
         , m_loop(loop)
+        , m_width(width)
+        , m_height(height)
     {
     }
 
@@ -54,7 +58,7 @@ public:
             }
             m_readCount = 0;
         }
-        frame = cv::Mat(4, 4, CV_8UC3, cv::Scalar(m_readCount % 255, 0, 0));
+        frame = cv::Mat(m_height, m_width, CV_8UC3, cv::Scalar(m_readCount % 255, 0, 0));
         ++m_readCount;
         return true;
     }
@@ -88,6 +92,8 @@ private:
     const std::string m_id;
     const bool m_openSucceeds;
     const bool m_loop;
+    const int m_width;
+    const int m_height;
     mutable std::mutex m_mutex;
     bool m_open = false;
     int m_readCount = 0;
