@@ -15,6 +15,13 @@ editing this file first.
 - `EventWriter::requestQuery` callbacks are also queued onto the GUI
   receiver. Do not open a second `QSqlDatabase` from QML.
 
+## Visual shell
+
+Chrome colors, type, and spacing come from the `Theme` QML singleton
+(`views/Theme.qml`). Do not hard-code page backgrounds or title-bar paints.
+Rule overlay strokes on the video stay kind-specific. Token dump:
+`design-system/visionlab-pro/MASTER.md`.
+
 ## Telemetry cadence
 
 `VisionController` starts one `QTimer` at **250 ms** and calls

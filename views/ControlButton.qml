@@ -1,32 +1,37 @@
 import QtQuick
-import QtQuick.Controls
+import QtQuick.Controls.Basic
 
 Button {
     id: root
-    width: 15
-    height: 15
-    flat: true
 
-    signal clicked()
+    property string glyph: ""
+    property bool destructive: false
 
-    property color hoverColor: "#3a3a3a"
-    property color backgroundColor: "#fff"
+    implicitWidth: Theme.hit
+    implicitHeight: Theme.hit
+    font.pixelSize: Theme.caption
+    font.family: Theme.fontUi
+    activeFocusOnTab: true
+    Accessible.role: Accessible.Button
 
-    background: Rectangle {
-        id: rect
-        radius: 100
-        color: root.backgroundColor
-        opacity: buttonMouseArea.containsMouse ? 0.75 : 1;
+    contentItem: Text {
+        text: root.glyph
+        color: (root.destructive && root.hovered) ? Theme.textOnDestructive : Theme.foreground
+        font: root.font
+        horizontalAlignment: Text.AlignHCenter
+        verticalAlignment: Text.AlignVCenter
     }
 
-    MouseArea {
-        id: buttonMouseArea
-        anchors.fill: parent
-        hoverEnabled: true
-        cursorShape: Qt.PointingHandCursor
-
-        onClicked: {
-            root.clicked()
+    background: Rectangle {
+        radius: 6
+        color: {
+            if (root.destructive && (root.hovered || root.pressed))
+                return Theme.destructive
+            if (root.hovered || root.pressed)
+                return Theme.muted
+            return "transparent"
         }
+        border.width: root.activeFocus ? 2 : 0
+        border.color: Theme.ring
     }
 }

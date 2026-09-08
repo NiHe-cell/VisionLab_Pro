@@ -64,6 +64,8 @@ find_package(Qt6 REQUIRED COMPONENTS
     Quick
     Qml
     Sql
+    Svg
+    QuickControls2
 )
 
 qt_standard_project_setup(REQUIRES 6.8)
@@ -372,6 +374,7 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/models/yolov4-tiny.onnx")
 endif()
 
 set_source_files_properties(views/I18n.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
+set_source_files_properties(views/Theme.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 
 qt_add_qml_module(appVisionLab
     URI VisionLab
@@ -383,12 +386,17 @@ qt_add_qml_module(appVisionLab
         views/ControlButton.qml
         views/CameraView.qml
         views/I18n.qml
+        views/Theme.qml
         views/SideNav.qml
         views/MonitorPage.qml
         views/EventsPage.qml
         views/PerformancePage.qml
         views/SettingsPage.qml
         views/RuleOverlay.qml
+        views/IconNavButton.qml
+        views/ToolChip.qml
+        views/KpiCard.qml
+        views/SettingsCard.qml
 
     SOURCES
         controllers/WindowController.h controllers/WindowController.cpp
@@ -407,6 +415,10 @@ qt_add_qml_module(appVisionLab
     RESOURCES
         assets/logo.png
         assets/logo.ico
+        assets/icons/video.svg
+        assets/icons/warning.svg
+        assets/icons/pulse.svg
+        assets/icons/gear.svg
         models/coco.names
         models/res10_300x300_ssd_iter_140000.caffemodel
         models/deploy.prototxt
@@ -426,6 +438,8 @@ target_link_libraries(appVisionLab PRIVATE
     Qt6::Widgets
     Qt6::Quick
     Qt6::Qml
+    Qt6::Svg
+    Qt6::QuickControls2
     ${OpenCV_LIBS}
 )
 

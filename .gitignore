@@ -55,6 +55,11 @@ compile_commands.json
 
 *_qmlcache.qrc
 
+# Local / generated
+.cursor/
+**/__pycache__/
+*.pyc
+
 # TensorRT serialized engines (T05+)
 .trt-cache/
 *.engine

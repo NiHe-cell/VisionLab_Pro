@@ -11,7 +11,8 @@ the existing `build/dev-debug` layout: TensorRT off, warnings off.
 
 - CMake 3.21+ if you use `CMakePresets.json` (project `cmake_minimum_required`
   remains 3.16 for Qt Creator kits).
-- Qt 6.8+ (`qt_standard_project_setup(REQUIRES 6.8)`), including Sql, Quick, Qml.
+- Qt 6.8+ (`qt_standard_project_setup(REQUIRES 6.8)`), including Sql, Quick,
+  Qml, Svg, and QuickControls2 (Night Ops icons and styled controls).
 - OpenCV (directory that contains `OpenCVConfig.cmake`).
 - ONNX Runtime official CPU zip 1.17+ (`include/onnxruntime_cxx_api.h` and `lib/`).
 - Optional: CUDA Toolkit + TensorRT 10 when `VISIONLAB_ENABLE_TENSORRT=ON`.

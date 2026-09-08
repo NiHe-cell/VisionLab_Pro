@@ -1,51 +1,36 @@
-/*
- * Author - Muhammed Suwaneh
-*/
-
 import QtQuick
-import QtQuick.Controls
-
+import QtQuick.Layouts
 
 Item {
     id: root
     clip: true
-    width: parent.width
-    height: 50
 
     Rectangle {
         anchors.fill: parent
-        radius: 12
-        color: "#0F172B"
-        id: titleBar
+        color: Theme.primary
     }
 
-    Rectangle {
+    RowLayout {
+        spacing: Theme.spaceSm
         anchors.left: parent.left
-        anchors.right: parent.right
-        anchors.bottom: parent.bottom
-        height: 12
-        color: "#0F172B"
-    }
-
-    Row
-    {
-        spacing: 5
-        anchors.left: parent.left
-        anchors.leftMargin: 12
+        anchors.leftMargin: Theme.spaceLg
         anchors.verticalCenter: parent.verticalCenter
 
         Image {
-            width: 20
-            height: 20
+            Layout.preferredWidth: Theme.icon
+            Layout.preferredHeight: Theme.icon
+            sourceSize.width: Theme.icon
+            sourceSize.height: Theme.icon
             mipmap: true
-            fillMode: Image.PreserveAspectCrop
+            fillMode: Image.PreserveAspectFit
             source: "../assets/logo.png"
         }
 
         Text {
             text: I18n.appTitle
-            color: "white"
-            font.pixelSize: 15
+            color: Theme.foreground
+            font.pixelSize: Theme.body
+            font.family: Theme.fontUi
             font.bold: true
         }
     }
@@ -62,72 +47,49 @@ Item {
 
     Row {
         id: controlButtons
-        spacing: 10
-
+        spacing: Theme.spaceMd
         anchors.right: parent.right
-        anchors.rightMargin: 8
+        anchors.rightMargin: Theme.spaceMd
         anchors.verticalCenter: parent.verticalCenter
 
-        Rectangle {
-            width: 88
-            height: 22
-            radius: 6
-            color: VisionController.running ? "#FF637E" : "#155DFC"
-            anchors.verticalCenter: parent.verticalCenter
-
-            Text {
-                anchors.centerIn: parent
-                text: VisionController.running ? I18n.stopCamera : I18n.startCamera
-                color: "white"
-                font.pixelSize: 11
-                font.bold: true
-            }
-
-            MouseArea {
-                anchors.fill: parent
-                cursorShape: Qt.PointingHandCursor
-                onClicked: {
-                    if (!VisionController.running)
-                        VisionController.startCamera()
-                    else
-                        VisionController.stopCamera()
-                }
-            }
-        }
-
-        Rectangle {
-            width: 40
-            height: 22
-            radius: 6
-            color: "#1E293B"
-            border.color: "#334155"
-            anchors.verticalCenter: parent.verticalCenter
-
-            Text {
-                anchors.centerIn: parent
-                text: I18n.languageButton
-                color: "white"
-                font.pixelSize: 12
-                font.bold: true
-            }
-
-            MouseArea {
-                anchors.fill: parent
-                cursorShape: Qt.PointingHandCursor
-                onClicked: LocaleController.toggle()
-            }
-        }
-
-        ControlButton { backgroundColor: "#FFD230"; onClicked: WindowController.minimize() }
-        ControlButton { backgroundColor: "#05DF72"; onClicked: WindowController.maximize() }
-        ControlButton
-        {
-            backgroundColor: "#F4320B";
+        ToolChip {
+            text: VisionController.running ? I18n.stopCamera : I18n.startCamera
+            primary: !VisionController.running
+            danger: VisionController.running
+            implicitWidth: Math.max(108, implicitContentWidth + Theme.spaceXl)
             onClicked: {
-                if(VisionController.running) VisionController.stopCamera();
+                if (!VisionController.running)
+                    VisionController.startCamera()
+                else
+                    VisionController.stopCamera()
+            }
+        }
+
+        ToolChip {
+            text: I18n.languageButton
+            implicitWidth: Theme.hit + Theme.spaceMd
+            onClicked: LocaleController.toggle()
+        }
+
+        ControlButton {
+            glyph: "\u2013"
+            Accessible.name: I18n.windowMinimize
+            onClicked: WindowController.minimize()
+        }
+        ControlButton {
+            glyph: "\u25A1"
+            Accessible.name: I18n.windowMaximize
+            onClicked: WindowController.maximize()
+        }
+        ControlButton {
+            glyph: "\u00D7"
+            destructive: true
+            Accessible.name: I18n.windowClose
+            onClicked: {
+                if (VisionController.running)
+                    VisionController.stopCamera()
                 WindowController.close()
             }
         }
     }
 }
-

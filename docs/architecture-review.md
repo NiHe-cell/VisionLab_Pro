@@ -76,7 +76,7 @@ DoD. Remaining items below are accepted limits or Future work.
 | Rule mutate while running | Would need a thread-safe swap or a rule thread. |
 | Larger EventLog / persist-on-push | Close the GUI-stall window. |
 | Rename `models/` | Qt `*Model` sources share a folder with Caffe/ONNX files. |
-| Screenshot refresh | Capture the four-page shell. |
+| Screenshot refresh | Night Ops QML is in tree; `screenshots/*.png` are still upstream. |
 | CI CUDA/TensorRT job | Not in `.github/workflows/ci.yml`. |
 
 ## Technical debt (do not “fix” inside a review commit)

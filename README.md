@@ -4,7 +4,11 @@
 
 Real-time video analytics and edge inference, rebuilt from the upstream
 VisionLab camera demo. C++20, Qt 6 QML, OpenCV, ONNX Runtime, optional
-TensorRT 10.
+TensorRT 10. The desktop shell is a dark Night Ops command center
+(`views/Theme.qml`); capture, inference, tracking, and rules stay off the
+GUI thread.
+
+中文说明：[README.zh.md](README.zh.md)
 
 Clone this fork:
 
@@ -35,7 +39,7 @@ draw on `cv::Mat`. Frame backpressure is `BoundedQueue` with `DropOldest`.
 | Multi-object tracking | `ByteTrackTracker` (`ITracker`) |
 | Four analytics rules | ROI, line crossing, loitering, counting (`IRule`) |
 | SQLite event writer | `EventWriter` + `SqliteEventRepository` (`prune(10000)`) |
-| Four-page QML UI | Monitor, Events, Performance, Settings |
+| Four-page Night Ops QML UI | Monitor, Events, Performance, Settings (`Theme`, icon rail) |
 
 Not this project: C++17 as the language standard (it is C++20), detectors
 painting boxes, detached `std::thread` on the hot path (workers are
@@ -45,8 +49,9 @@ painting boxes, detached `std::thread` on the hot path (workers are
 
 `screenshots/MainWindow.png`, `FaceDetection.png`, `ObjectDetection.png`, and
 `MotionDetection.png` are **historical** captures of the upstream single-view
-UI. The current shell is four pages (`views/Main.qml`). Do not treat those
-PNGs as the Performance page or as a measured FPS.
+UI. The current shell is four Night Ops pages (`views/Main.qml`, dark
+`Theme` tokens, 64 px icon rail). Do not treat those PNGs as the live UI,
+the Performance page, or a measured FPS.
 
 ## Architecture
 
@@ -94,10 +99,18 @@ Contract: `docs/analytics/rule-engine.md`.
 
 ## UI
 
-Monitor (live frame, draw tools when stopped), Events (filter + history),
-Performance (250 ms `PipelineStats` snapshot — **not** a benchmark),
-Settings (inference / tracking apply when stopped). Boundary:
-`docs/ui/qml-boundary.md`.
+Night Ops dark shell. Tokens live in `views/Theme.qml` and
+`design-system/visionlab-pro/MASTER.md`. QML still talks only to
+`VisionController`.
+
+- Monitor: live frame, mode + rule tools when stopped, HUD chips while running
+- Events: type chips + history table
+- Performance: KPI cards from a 250 ms `PipelineStats` snapshot — **not** a
+  benchmark
+- Settings: Inference / Plugins / Rules cards; apply when stopped
+
+Boundary: `docs/ui/qml-boundary.md`. Visual spec:
+`docs/superpowers/specs/2026-09-08-night-ops-ui-design.md`.
 
 ## Performance
 
@@ -114,6 +127,7 @@ cmake/         FindOnnxRuntime, FindTensorRT
 controllers/   VisionController
 core/          BoundedQueue, FramePacket, Detection, Track, VisionEvent
 detectors/     IDetector + Face / Motion / YOLO (no drawing)
+design-system/ Night Ops color/type tokens (MASTER + page overrides)
 docs/          architecture, build, testing, benchmarks, …
 inference/     IInferenceEngine implementations
 models/        Qt list models and detector files (mixed on purpose for V1)
@@ -126,7 +140,7 @@ tests/         CTest cpu / gpu labels
 tracking/      ByteTrackTracker
 utilities/     CameraManager
 video/         IVideoSource, CameraSource, FakeVideoSource
-views/         QML pages
+views/         QML pages, `Theme` singleton, Night Ops controls
 ```
 
 ## Build
@@ -139,8 +153,9 @@ cmake --preset dev-debug
 cmake --build --preset dev-debug
 ```
 
-Requires C++20, Qt 6.8+ (Sql, Quick, Qml), OpenCV MSVC pack, ORT CPU zip
-1.17+. MinGW cannot link the official OpenCV `vc16` tree.
+Requires C++20, Qt 6.8+ (Sql, Quick, Qml, Svg, QuickControls2), OpenCV
+MSVC pack, ORT CPU zip 1.17+. MinGW cannot link the official OpenCV `vc16`
+tree.
 
 ## Configuration
 
@@ -177,7 +192,8 @@ Checklist: [`docs/release-checklist.md`](docs/release-checklist.md). Review:
 
 **Future (not V1):** INT8, qmltestrunner, plugin unload / hot-reload, rule
 mutate while running, larger EventLog, default sanitizers, refreshed
-screenshots, renaming `models/` so Qt models and weights are not mixed.
+screenshots of the Night Ops shell, renaming `models/` so Qt models and
+weights are not mixed.
 
 ## Upstream / Attribution
 
